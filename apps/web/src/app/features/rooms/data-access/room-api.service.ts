@@ -4,12 +4,16 @@ import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contra
 import { firstValueFrom } from 'rxjs';
 import { API_BASE_URL } from '../../../core/api-base-url.token';
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class RoomApiService {
   private readonly http = inject(HttpClient);
   private readonly apiBaseUrl = inject(API_BASE_URL);
 
-  joinRoom(request: JoinRoomRequest, devUserId: string, displayName: string): Promise<JoinRoomResponse> {
+  joinRoom(
+    request: JoinRoomRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<JoinRoomResponse> {
     const headers = new HttpHeaders({
       'x-dev-user-id': devUserId,
       'x-dev-display-name': displayName,
