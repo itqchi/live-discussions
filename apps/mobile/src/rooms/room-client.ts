@@ -1,5 +1,5 @@
+import type { JoinRoomResponse } from '@live-discussions/contracts';
 import { Room } from 'livekit-client';
-import type { JoinRoomResponse } from '../../../../libs/contracts/src/lib/room';
 
 export class MobileRoomClient {
   private readonly room = new Room();
