@@ -11,11 +11,12 @@ export class RoomFacade {
   readonly connected = this.media.connected.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
   readonly cameraEnabled = this.media.cameraEnabled.asReadonly();
+  readonly screenSharing = this.media.screenSharing.asReadonly();
+  readonly audioPlaybackBlocked = this.media.audioPlaybackBlocked.asReadonly();
   readonly videoTracks = this.media.videoTracks.asReadonly();
 
   readonly joining = signal(false);
   readonly error = signal<string | null>(null);
-  readonly screenSharing = signal(false);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
 
   readonly canPublishAudio = computed(() => this.participant()?.permissions.canPublishAudio ?? false);
@@ -44,31 +45,55 @@ export class RoomFacade {
       await this.media.connect(session);
       this.participant.set(session.participant);
     } catch (error) {
-      this.error.set(error instanceof Error ? error.message : 'Unable to join the room.');
+      this.error.set(this.errorMessage(error, 'Unable to join the room.'));
     } finally {
       this.joining.set(false);
     }
   }
 
-  toggleMicrophone(): Promise<void> {
-    return this.media.setMicrophone(!this.microphoneEnabled());
+  async toggleMicrophone(): Promise<void> {
+    await this.runMediaAction(
+      () => this.media.setMicrophone(!this.microphoneEnabled()),
+      'Unable to change microphone state.',
+    );
   }
 
-  toggleCamera(): Promise<void> {
-    return this.media.setCamera(!this.cameraEnabled());
+  async toggleCamera(): Promise<void> {
+    await this.runMediaAction(
+      () => this.media.setCamera(!this.cameraEnabled()),
+      'Unable to change camera state.',
+    );
   }
 
   async toggleScreenShare(): Promise<void> {
-    const next = !this.screenSharing();
-    await this.media.setScreenShare(next);
-    this.screenSharing.set(next);
+    await this.runMediaAction(
+      () => this.media.setScreenShare(!this.screenSharing()),
+      'Unable to change screen sharing state.',
+    );
+  }
+
+  async resumeAudio(): Promise<void> {
+    await this.runMediaAction(() => this.media.resumeAudio(), 'Unable to start room audio.');
   }
 
   leave(): void {
     this.media.disconnect();
     this.participant.set(null);
-    this.screenSharing.set(false);
     this.error.set(null);
+  }
+
+  private async runMediaAction(action: () => Promise<void>, fallbackMessage: string): Promise<void> {
+    this.error.set(null);
+
+    try {
+      await action();
+    } catch (error) {
+      this.error.set(this.errorMessage(error, fallbackMessage));
+    }
+  }
+
+  private errorMessage(error: unknown, fallbackMessage: string): string {
+    return error instanceof Error && error.message ? error.message : fallbackMessage;
   }
 
   private getOrCreateDevUserId(): string {
