@@ -70,6 +70,19 @@
         <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
       </div>
 
+      @if (facade.audioPlaybackBlocked()) {
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-700/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+          <span>Your browser blocked room audio until you interact with the page.</span>
+          <button
+            class="rounded-xl border border-amber-500/70 px-3 py-2 font-semibold"
+            type="button"
+            (click)="facade.resumeAudio()"
+          >
+            Enable room audio
+          </button>
+        </div>
+      }
+
       @if (facade.videoTracks().length) {
         <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
           @for (tile of facade.videoTracks(); track tile.id) {
