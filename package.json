@@ -1,0 +1,20 @@
+{
+  "name": "live-discussions",
+  "private": true,
+  "packageManager": "pnpm@10",
+  "scripts": {
+    "nx": "nx",
+    "graph": "nx graph",
+    "web": "nx serve web",
+    "api": "nx serve api",
+    "mobile": "nx start mobile"
+  },
+  "devDependencies": {
+    "nx": "latest",
+    "typescript": "latest"
+  },
+  "dependencies": {
+    "livekit-client": "latest",
+    "livekit-server-sdk": "latest"
+  }
+}
