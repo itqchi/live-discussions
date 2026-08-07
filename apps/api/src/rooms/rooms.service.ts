@@ -17,9 +17,10 @@ export class RoomsService {
     const apiSecret = this.config.get<string>('LIVEKIT_API_SECRET')?.trim();
     const livekitUrl = this.config.get<string>('LIVEKIT_URL')?.trim();
 
-    if (!this.hasValidLiveKitConfig(livekitUrl, apiKey, apiSecret)) {
+    const invalidFields = this.getInvalidLiveKitFields(livekitUrl, apiKey, apiSecret);
+    if (invalidFields.length > 0) {
       throw new ServiceUnavailableException(
-        'LiveKit is not configured with real project credentials. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in .env using values from your LiveKit project.',
+        `LiveKit configuration is invalid for: ${invalidFields.join(', ')}. Update those values in .env with credentials from your LiveKit project and restart the API.`,
       );
     }
 
@@ -32,7 +33,7 @@ export class RoomsService {
       permissions,
     };
 
-    const token = new AccessToken(apiKey, apiSecret, {
+    const token = new AccessToken(apiKey!, apiSecret!, {
       identity: user.userId,
       name: user.displayName,
       metadata: JSON.stringify({ role }),
@@ -47,23 +48,31 @@ export class RoomsService {
     });
 
     return {
-      livekitUrl,
+      livekitUrl: livekitUrl!,
       token: await token.toJwt(),
       participant,
     };
   }
 
-  private hasValidLiveKitConfig(
+  private getInvalidLiveKitFields(
     livekitUrl: string | undefined,
     apiKey: string | undefined,
     apiSecret: string | undefined,
-  ): livekitUrl is string {
-    if (!livekitUrl || !apiKey || !apiSecret) return false;
+  ): string[] {
+    const invalidFields: string[] = [];
 
-    return (
-      !livekitUrl.includes('your-project.livekit.cloud') &&
-      apiKey !== 'replace-me' &&
-      apiSecret !== 'replace-me'
-    );
+    if (!livekitUrl || livekitUrl.includes('your-project.livekit.cloud')) {
+      invalidFields.push('LIVEKIT_URL');
+    }
+
+    if (!apiKey || apiKey === 'replace-me') {
+      invalidFields.push('LIVEKIT_API_KEY');
+    }
+
+    if (!apiSecret || apiSecret === 'replace-me') {
+      invalidFields.push('LIVEKIT_API_SECRET');
+    }
+
+    return invalidFields;
   }
 }
