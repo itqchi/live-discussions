@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
+import type { AuthenticatedUser, JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 import { AccessToken } from 'livekit-server-sdk';
 import { permissionsForRole } from './room-permissions';
+import { RoomMembershipService } from './room-membership.service';
 
 @Injectable()
 export class RoomsService {
-  async createJoinToken(request: JoinRoomRequest): Promise<JoinRoomResponse> {
+  constructor(private readonly memberships: RoomMembershipService) {}
+
+  async createJoinToken(request: JoinRoomRequest, user: AuthenticatedUser): Promise<JoinRoomResponse> {
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const livekitUrl = process.env.LIVEKIT_URL;
@@ -14,18 +17,19 @@ export class RoomsService {
       throw new Error('LiveKit environment variables are not configured');
     }
 
-    const permissions = permissionsForRole(request.role);
+    const role = this.memberships.resolveRole(request.roomId, user);
+    const permissions = permissionsForRole(role);
     const participant = {
-      userId: request.userId,
-      displayName: request.displayName,
-      role: request.role,
+      userId: user.userId,
+      displayName: user.displayName,
+      role,
       permissions,
     };
 
     const token = new AccessToken(apiKey, apiSecret, {
-      identity: request.userId,
-      name: request.displayName,
-      metadata: JSON.stringify({ role: request.role }),
+      identity: user.userId,
+      name: user.displayName,
+      metadata: JSON.stringify({ role }),
       ttl: '1h',
     });
 
