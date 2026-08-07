@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { RoomFacade } from '../../data-access/room.facade';
 import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
@@ -19,6 +20,21 @@ export class RoomPageComponent {
     displayName: ['', [Validators.required, Validators.maxLength(80)]],
   });
 
+  readonly displayName = toSignal(this.joinForm.controls.displayName.valueChanges, {
+    initialValue: this.joinForm.controls.displayName.value,
+  });
+
+  readonly initials = computed(() => {
+    const value = this.displayName().trim();
+    if (!value) return '?';
+
+    return value
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('');
+  });
+
   join(): void {
     if (this.joinForm.invalid) {
       this.joinForm.markAllAsTouched();
@@ -27,16 +43,5 @@ export class RoomPageComponent {
 
     const { roomId, displayName } = this.joinForm.getRawValue();
     void this.facade.join(roomId, displayName);
-  }
-
-  initials(): string {
-    const displayName = this.joinForm.controls.displayName.value.trim();
-    if (!displayName) return '?';
-
-    return displayName
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('');
   }
 }
