@@ -1,10 +1,6 @@
 {
   "name": "live-discussions",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "libs/*"
-  ],
   "engines": {
     "node": ">=22.22.3",
     "npm": ">=10.9.0"
