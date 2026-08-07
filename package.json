@@ -20,6 +20,7 @@
     "@nx/nest": "latest",
     "@nx/node": "latest",
     "@nx/react-native": "latest",
+    "@types/node": "latest",
     "nx": "latest",
     "typescript": "latest"
   },
@@ -27,6 +28,7 @@
     "@angular/common": "latest",
     "@angular/compiler": "latest",
     "@angular/core": "latest",
+    "@angular/forms": "latest",
     "@angular/platform-browser": "latest",
     "@nestjs/common": "latest",
     "@nestjs/core": "latest",
@@ -34,6 +36,8 @@
     "livekit-client": "latest",
     "livekit-server-sdk": "latest",
     "reflect-metadata": "latest",
-    "rxjs": "latest"
+    "rxjs": "latest",
+    "tslib": "latest",
+    "zone.js": "latest"
   }
 }
