@@ -16,7 +16,7 @@ export interface VideoTile {
   track: LocalVideoTrack | RemoteVideoTrack;
 }
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class RoomMediaService {
   private readonly room = new Room();
   private nextVideoTileId = 1;
@@ -31,7 +31,12 @@ export class RoomMediaService {
 
     this.room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
       if (track.kind !== Track.Kind.Video) return;
-      this.addVideoTrack(track as RemoteVideoTrack, participant.identity, participant.name || participant.identity, false);
+      this.addVideoTrack(
+        track as RemoteVideoTrack,
+        participant.identity,
+        participant.name || participant.identity,
+        false,
+      );
     });
 
     this.room.on(RoomEvent.TrackUnsubscribed, (track) => this.removeVideoTrack(track));
@@ -39,7 +44,12 @@ export class RoomMediaService {
     this.room.on(RoomEvent.LocalTrackPublished, (publication, participant) => {
       const track = publication.track;
       if (!track || track.kind !== Track.Kind.Video) return;
-      this.addVideoTrack(track as LocalVideoTrack, participant.identity, participant.name || participant.identity, true);
+      this.addVideoTrack(
+        track as LocalVideoTrack,
+        participant.identity,
+        participant.name || participant.identity,
+        true,
+      );
     });
 
     this.room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
@@ -47,7 +57,9 @@ export class RoomMediaService {
     });
 
     this.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
-      this.videoTracks.update((tiles) => tiles.filter((tile) => tile.participantIdentity !== participant.identity));
+      this.videoTracks.update((tiles) =>
+        tiles.filter((tile) => tile.participantIdentity !== participant.identity),
+      );
     });
 
     this.room.on(RoomEvent.Disconnected, () => {
