@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "module": "ES2022",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
-      "@live-discussions/contracts": ["libs/contracts/src/index.ts"]
+      "@live-discussions/contracts": ["./libs/contracts/src/index.ts"]
     }
   }
 }
