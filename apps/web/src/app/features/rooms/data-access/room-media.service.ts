@@ -1,7 +1,9 @@
-import { Injectable, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import type { JoinRoomResponse } from '@live-discussions/contracts';
 import {
   type LocalVideoTrack,
+  type RemoteAudioTrack,
   type RemoteVideoTrack,
   Room,
   RoomEvent,
@@ -18,18 +20,35 @@ export interface VideoTile {
 
 @Injectable()
 export class RoomMediaService {
+  private readonly document = inject(DOCUMENT);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly room = new Room();
+  private readonly audioElements = new Map<RemoteAudioTrack, HTMLMediaElement>();
   private nextVideoTileId = 1;
 
   readonly connected = signal(false);
   readonly microphoneEnabled = signal(false);
   readonly cameraEnabled = signal(false);
+  readonly screenSharing = signal(false);
+  readonly audioPlaybackBlocked = signal(false);
   readonly videoTracks = signal<VideoTile[]>([]);
 
   constructor() {
-    this.room.on(RoomEvent.Connected, () => this.connected.set(true));
+    this.room.on(RoomEvent.Connected, () => {
+      this.connected.set(true);
+      this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
+    });
+
+    this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
+    });
 
     this.room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      if (track.kind === Track.Kind.Audio) {
+        this.attachAudioTrack(track as RemoteAudioTrack);
+        return;
+      }
+
       if (track.kind !== Track.Kind.Video) return;
       this.addVideoTrack(
         track as RemoteVideoTrack,
@@ -39,7 +58,14 @@ export class RoomMediaService {
       );
     });
 
-    this.room.on(RoomEvent.TrackUnsubscribed, (track) => this.removeVideoTrack(track));
+    this.room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      if (track.kind === Track.Kind.Audio) {
+        this.detachAudioTrack(track as RemoteAudioTrack);
+        return;
+      }
+
+      this.removeVideoTrack(track);
+    });
 
     this.room.on(RoomEvent.LocalTrackPublished, (publication, participant) => {
       const track = publication.track;
@@ -53,6 +79,10 @@ export class RoomMediaService {
     });
 
     this.room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        this.screenSharing.set(false);
+      }
+
       if (publication.track) this.removeVideoTrack(publication.track);
     });
 
@@ -62,11 +92,12 @@ export class RoomMediaService {
       );
     });
 
-    this.room.on(RoomEvent.Disconnected, () => {
-      this.connected.set(false);
-      this.microphoneEnabled.set(false);
-      this.cameraEnabled.set(false);
-      this.videoTracks.set([]);
+    this.room.on(RoomEvent.Disconnected, () => this.resetMediaState());
+
+    this.destroyRef.onDestroy(() => {
+      this.cleanupAudioTracks();
+      this.room.removeAllListeners();
+      this.room.disconnect();
     });
   }
 
@@ -84,12 +115,56 @@ export class RoomMediaService {
     this.cameraEnabled.set(enabled);
   }
 
-  setScreenShare(enabled: boolean): Promise<void> {
-    return this.room.localParticipant.setScreenShareEnabled(enabled).then(() => undefined);
+  async setScreenShare(enabled: boolean): Promise<void> {
+    await this.room.localParticipant.setScreenShareEnabled(enabled);
+    this.screenSharing.set(enabled);
+  }
+
+  async resumeAudio(): Promise<void> {
+    await this.room.startAudio();
+    this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
   }
 
   disconnect(): void {
     this.room.disconnect();
+  }
+
+  private attachAudioTrack(track: RemoteAudioTrack): void {
+    if (this.audioElements.has(track)) return;
+
+    const element = track.attach();
+    element.autoplay = true;
+    element.style.display = 'none';
+    this.document.body.appendChild(element);
+    this.audioElements.set(track, element);
+  }
+
+  private detachAudioTrack(track: RemoteAudioTrack): void {
+    const element = this.audioElements.get(track);
+    if (!element) return;
+
+    track.detach(element);
+    element.remove();
+    this.audioElements.delete(track);
+  }
+
+  private cleanupAudioTracks(): void {
+    for (const [track, element] of this.audioElements) {
+      track.detach(element);
+      element.remove();
+    }
+
+    this.audioElements.clear();
+  }
+
+  private resetMediaState(): void {
+    this.cleanupAudioTracks();
+    this.connected.set(false);
+    this.microphoneEnabled.set(false);
+    this.cameraEnabled.set(false);
+    this.screenSharing.set(false);
+    this.audioPlaybackBlocked.set(false);
+    this.videoTracks.set([]);
   }
 
   private addVideoTrack(
