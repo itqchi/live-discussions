@@ -1,6 +1,7 @@
 import { Body, Controller, Headers, Post } from '@nestjs/common';
-import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
+import type { JoinRoomResponse } from '@live-discussions/contracts';
 import { devIdentityFromHeaders } from '../auth/dev-identity';
+import { JoinRoomDto } from './dto/join-room.dto';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
@@ -9,7 +10,7 @@ export class RoomsController {
 
   @Post('join')
   join(
-    @Body() request: JoinRoomRequest,
+    @Body() request: JoinRoomDto,
     @Headers() headers: Record<string, string | string[] | undefined>,
   ): Promise<JoinRoomResponse> {
     return this.roomsService.createJoinToken(request, devIdentityFromHeaders(headers));
