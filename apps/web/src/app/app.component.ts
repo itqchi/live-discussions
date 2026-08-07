@@ -1,14 +1,13 @@
-import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
-import { RoomService } from './rooms/room.service';
+import { RoomFacade } from './rooms/room.facade';
 import { VideoTrackComponent } from './rooms/video-track.component';
 
 @Component({
   selector: 'live-discussions-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, VideoTrackComponent],
+  imports: [FormsModule, VideoTrackComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="page-shell">
       <header class="topbar">
@@ -16,8 +15,8 @@ import { VideoTrackComponent } from './rooms/video-track.component';
           <p class="eyebrow">LIVE DISCUSSIONS</p>
           <h1>Conversation first. Camera when you want it.</h1>
         </div>
-        <span class="status" [class.online]="room.connected()">
-          {{ room.connected() ? 'Connected' : 'Not connected' }}
+        <span class="status" [class.online]="facade.media.connected()">
+          {{ facade.media.connected() ? 'Connected' : 'Not connected' }}
         </span>
       </header>
 
@@ -34,12 +33,12 @@ import { VideoTrackComponent } from './rooms/video-track.component';
           </label>
           <p class="assignment-note">Your room role is assigned by the server.</p>
 
-          <button class="primary" (click)="join()" [disabled]="joining() || room.connected()">
-            {{ joining() ? 'Joining…' : 'Join discussion' }}
+          <button class="primary" (click)="join()" [disabled]="facade.joining() || facade.media.connected()">
+            {{ facade.joining() ? 'Joining…' : 'Join discussion' }}
           </button>
 
-          @if (error()) {
-            <p class="error">{{ error() }}</p>
+          @if (facade.error()) {
+            <p class="error">{{ facade.error() }}</p>
           }
         </aside>
 
@@ -49,12 +48,12 @@ import { VideoTrackComponent } from './rooms/video-track.component';
               <p class="eyebrow">ROOM</p>
               <h2>{{ roomId || 'Choose a room' }}</h2>
             </div>
-            <span>{{ roleLabel() }}</span>
+            <span>{{ facade.roleLabel() }}</span>
           </div>
 
-          @if (room.videoTracks().length) {
+          @if (facade.media.videoTracks().length) {
             <div class="video-grid">
-              @for (tile of room.videoTracks(); track tile.id) {
+              @for (tile of facade.media.videoTracks(); track tile.id) {
                 <article class="video-tile">
                   <live-discussions-video-track [track]="tile.track" />
                   <div class="video-label">
@@ -70,25 +69,25 @@ import { VideoTrackComponent } from './rooms/video-track.component';
             <div class="stage">
               <div class="avatar">{{ initials() }}</div>
               <strong>{{ displayName || 'You' }}</strong>
-              <small>{{ room.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
+              <small>{{ facade.media.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
             </div>
           }
 
           <div class="controls">
-            <button (click)="toggleMicrophone()" [disabled]="!room.connected() || !canPublishAudio()">
-              {{ room.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
+            <button (click)="facade.toggleMicrophone()" [disabled]="!facade.media.connected() || !facade.canPublishAudio()">
+              {{ facade.media.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
             </button>
-            <button (click)="toggleCamera()" [disabled]="!room.connected() || !canPublishVideo()">
-              {{ room.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
+            <button (click)="facade.toggleCamera()" [disabled]="!facade.media.connected() || !facade.canPublishVideo()">
+              {{ facade.media.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
             </button>
-            <button (click)="toggleScreenShare()" [disabled]="!room.connected() || !canShareScreen()">
-              {{ screenSharing() ? 'Stop sharing' : 'Share screen' }}
+            <button (click)="facade.toggleScreenShare()" [disabled]="!facade.media.connected() || !facade.canShareScreen()">
+              {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
             </button>
-            <button class="danger" (click)="leave()" [disabled]="!room.connected()">Leave</button>
+            <button class="danger" (click)="facade.leave()" [disabled]="!facade.media.connected()">Leave</button>
           </div>
 
           <p class="hint">
-            Publishing capabilities come from the server-issued LiveKit token. The development identity headers will be replaced by real authentication.
+            Publishing capabilities come from the server-issued LiveKit token. The development identity adapter will be replaced by real authentication.
           </p>
         </section>
       </section>
@@ -135,90 +134,17 @@ import { VideoTrackComponent } from './rooms/video-track.component';
   `],
 })
 export class AppComponent {
-  readonly room = inject(RoomService);
+  readonly facade = inject(RoomFacade);
 
   roomId = 'general';
   displayName = '';
 
-  readonly joining = signal(false);
-  readonly error = signal<string | null>(null);
-  readonly screenSharing = signal(false);
-  readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
-
-  private readonly devUserId = this.getOrCreateDevUserId();
-
-  readonly canPublishAudio = computed(() => this.participant()?.permissions.canPublishAudio ?? false);
-  readonly canPublishVideo = computed(() => this.participant()?.permissions.canPublishVideo ?? false);
-  readonly canShareScreen = computed(() => this.participant()?.permissions.canShareScreen ?? false);
-  readonly roleLabel = computed(() => this.participant()?.role ?? 'role pending');
   readonly initials = computed(() => {
     const value = this.displayName.trim();
     return value ? value.split(/\s+/).slice(0, 2).map((part) => part[0].toUpperCase()).join('') : '?';
   });
 
-  async join(): Promise<void> {
-    if (!this.roomId.trim() || !this.displayName.trim()) {
-      this.error.set('Room ID and display name are required.');
-      return;
-    }
-
-    this.joining.set(true);
-    this.error.set(null);
-
-    const request: JoinRoomRequest = { roomId: this.roomId.trim() };
-
-    try {
-      const response = await fetch('http://localhost:3000/rooms/join', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-dev-user-id': this.devUserId,
-          'x-dev-display-name': this.displayName.trim(),
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Join failed (${response.status})`);
-      }
-
-      const session = (await response.json()) as JoinRoomResponse;
-      await this.room.connect(session);
-      this.participant.set(session.participant);
-    } catch (error) {
-      this.error.set(error instanceof Error ? error.message : 'Unable to join the room.');
-    } finally {
-      this.joining.set(false);
-    }
-  }
-
-  async toggleMicrophone(): Promise<void> {
-    await this.room.setMicrophone(!this.room.microphoneEnabled());
-  }
-
-  async toggleCamera(): Promise<void> {
-    await this.room.setCamera(!this.room.cameraEnabled());
-  }
-
-  async toggleScreenShare(): Promise<void> {
-    const next = !this.screenSharing();
-    await this.room.setScreenShare(next);
-    this.screenSharing.set(next);
-  }
-
-  leave(): void {
-    this.room.disconnect();
-    this.participant.set(null);
-    this.screenSharing.set(false);
-  }
-
-  private getOrCreateDevUserId(): string {
-    const key = 'live-discussions.dev-user-id';
-    const existing = sessionStorage.getItem(key);
-    if (existing) return existing;
-
-    const id = crypto.randomUUID();
-    sessionStorage.setItem(key, id);
-    return id;
+  join(): Promise<void> {
+    return this.facade.join(this.roomId, this.displayName);
   }
 }
