@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import type { JoinRoomRequest, JoinRoomResponse } from '../../../../libs/contracts/src/lib/room';
+import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
