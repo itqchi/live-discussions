@@ -1,8 +1,12 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, throwError } from 'rxjs';
 import { API_BASE_URL } from '../../../core/api-base-url.token';
+
+interface ApiErrorBody {
+  message?: string | string[];
+}
 
 @Injectable()
 export class RoomApiService {
@@ -20,7 +24,28 @@ export class RoomApiService {
     });
 
     return firstValueFrom(
-      this.http.post<JoinRoomResponse>(`${this.apiBaseUrl}/rooms/join`, request, { headers }),
+      this.http
+        .post<JoinRoomResponse>(`${this.apiBaseUrl}/rooms/join`, request, { headers })
+        .pipe(
+          catchError((error: HttpErrorResponse) =>
+            throwError(() => new Error(this.getErrorMessage(error))),
+          ),
+        ),
     );
+  }
+
+  private getErrorMessage(error: HttpErrorResponse): string {
+    const body = error.error as ApiErrorBody | null;
+    const message = body?.message;
+
+    if (Array.isArray(message)) {
+      return message.join(' ');
+    }
+
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+
+    return 'Unable to join the room.';
   }
 }
