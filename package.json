@@ -7,14 +7,33 @@
     "graph": "nx graph",
     "web": "nx serve web",
     "api": "nx serve api",
+    "build:web": "nx build web",
+    "build:api": "nx build api",
     "mobile": "nx start mobile"
   },
   "devDependencies": {
+    "@angular-devkit/build-angular": "latest",
+    "@angular/cli": "latest",
+    "@angular/compiler-cli": "latest",
+    "@nx/angular": "latest",
+    "@nx/js": "latest",
+    "@nx/nest": "latest",
+    "@nx/node": "latest",
+    "@nx/react-native": "latest",
     "nx": "latest",
     "typescript": "latest"
   },
   "dependencies": {
+    "@angular/common": "latest",
+    "@angular/compiler": "latest",
+    "@angular/core": "latest",
+    "@angular/platform-browser": "latest",
+    "@nestjs/common": "latest",
+    "@nestjs/core": "latest",
+    "@nestjs/platform-express": "latest",
     "livekit-client": "latest",
-    "livekit-server-sdk": "latest"
+    "livekit-server-sdk": "latest",
+    "reflect-metadata": "latest",
+    "rxjs": "latest"
   }
 }
