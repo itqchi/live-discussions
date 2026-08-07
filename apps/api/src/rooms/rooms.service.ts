@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 import { AccessToken } from 'livekit-server-sdk';
-import type { JoinRoomRequest, JoinRoomResponse } from '../../../../libs/contracts/src/lib/room';
 import { permissionsForRole } from './room-permissions';
 
 @Injectable()
