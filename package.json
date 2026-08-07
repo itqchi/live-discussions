@@ -23,6 +23,7 @@
     "@nx/node": "latest",
     "@nx/react-native": "latest",
     "@types/node": "latest",
+    "@types/pg": "latest",
     "@types/react": "latest",
     "nx": "latest",
     "typescript": "latest"
@@ -40,6 +41,7 @@
     "@nestjs/platform-express": "latest",
     "livekit-client": "latest",
     "livekit-server-sdk": "latest",
+    "pg": "latest",
     "react": "latest",
     "react-native": "latest",
     "reflect-metadata": "latest",
