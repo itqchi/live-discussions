@@ -1,9 +1,13 @@
 {
   "name": "live-discussions",
   "private": true,
-  "packageManager": "pnpm@11.17.0",
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
   "engines": {
-    "node": ">=22.22.3"
+    "node": ">=22.22.3",
+    "npm": ">=10.9.0"
   },
   "scripts": {
     "nx": "nx",
