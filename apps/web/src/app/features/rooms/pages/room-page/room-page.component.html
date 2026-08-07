@@ -9,12 +9,12 @@
 
     <span
       class="w-fit rounded-full border px-3 py-2 text-sm"
-      [class.border-emerald-500]="facade.media.connected()"
-      [class.text-emerald-100]="facade.media.connected()"
-      [class.border-slate-600]="!facade.media.connected()"
-      [class.text-slate-400]="!facade.media.connected()"
+      [class.border-emerald-500]="facade.connected()"
+      [class.text-emerald-100]="facade.connected()"
+      [class.border-slate-600]="!facade.connected()"
+      [class.text-slate-400]="!facade.connected()"
     >
-      {{ facade.media.connected() ? 'Connected' : 'Not connected' }}
+      {{ facade.connected() ? 'Connected' : 'Not connected' }}
     </span>
   </header>
 
@@ -50,7 +50,7 @@
         <button
           class="rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
           type="submit"
-          [disabled]="facade.joining() || facade.media.connected()"
+          [disabled]="facade.joining() || facade.connected()"
         >
           {{ facade.joining() ? 'Joining…' : 'Join discussion' }}
         </button>
@@ -70,9 +70,9 @@
         <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
       </div>
 
-      @if (facade.media.videoTracks().length) {
+      @if (facade.videoTracks().length) {
         <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          @for (tile of facade.media.videoTracks(); track tile.id) {
+          @for (tile of facade.videoTracks(); track tile.id) {
             <article class="relative aspect-video min-h-44 overflow-hidden rounded-2xl bg-slate-900">
               <live-discussions-video-track [track]="tile.track" />
               <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs backdrop-blur">
@@ -89,9 +89,9 @@
           <div class="grid size-28 place-items-center rounded-full border border-slate-500 bg-slate-700 text-3xl font-bold">
             {{ initials() }}
           </div>
-          <strong>{{ joinForm.controls.displayName.value || 'You' }}</strong>
+          <strong>{{ displayName() || 'You' }}</strong>
           <small class="text-slate-400">
-            {{ facade.media.connected() ? 'You are in the room' : 'Join to start listening' }}
+            {{ facade.connected() ? 'You are in the room' : 'Join to start listening' }}
           </small>
         </div>
       }
@@ -101,25 +101,25 @@
           class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
           (click)="facade.toggleMicrophone()"
-          [disabled]="!facade.media.connected() || !facade.canPublishAudio()"
+          [disabled]="!facade.connected() || !facade.canPublishAudio()"
         >
-          {{ facade.media.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
+          {{ facade.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
         </button>
 
         <button
           class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
           (click)="facade.toggleCamera()"
-          [disabled]="!facade.media.connected() || !facade.canPublishVideo()"
+          [disabled]="!facade.connected() || !facade.canPublishVideo()"
         >
-          {{ facade.media.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
+          {{ facade.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
         </button>
 
         <button
           class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
           (click)="facade.toggleScreenShare()"
-          [disabled]="!facade.media.connected() || !facade.canShareScreen()"
+          [disabled]="!facade.connected() || !facade.canShareScreen()"
         >
           {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
         </button>
@@ -128,7 +128,7 @@
           class="rounded-xl border border-red-900 px-4 py-3 text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
           (click)="facade.leave()"
-          [disabled]="!facade.media.connected()"
+          [disabled]="!facade.connected()"
         >
           Leave
         </button>
