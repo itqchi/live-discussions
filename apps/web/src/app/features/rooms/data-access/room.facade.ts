@@ -3,10 +3,15 @@ import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contra
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService } from './room-media.service';
 
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class RoomFacade {
   private readonly api = inject(RoomApiService);
-  readonly media = inject(RoomMediaService);
+  private readonly media = inject(RoomMediaService);
+
+  readonly connected = this.media.connected.asReadonly();
+  readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
+  readonly cameraEnabled = this.media.cameraEnabled.asReadonly();
+  readonly videoTracks = this.media.videoTracks.asReadonly();
 
   readonly joining = signal(false);
   readonly error = signal<string | null>(null);
@@ -46,11 +51,11 @@ export class RoomFacade {
   }
 
   toggleMicrophone(): Promise<void> {
-    return this.media.setMicrophone(!this.media.microphoneEnabled());
+    return this.media.setMicrophone(!this.microphoneEnabled());
   }
 
   toggleCamera(): Promise<void> {
-    return this.media.setCamera(!this.media.cameraEnabled());
+    return this.media.setCamera(!this.cameraEnabled());
   }
 
   async toggleScreenShare(): Promise<void> {
