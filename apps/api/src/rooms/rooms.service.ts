@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { ServiceUnavailableException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { AuthenticatedUser, JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 import { AccessToken } from 'livekit-server-sdk';
 import { permissionsForRole } from './room-permissions';
@@ -6,15 +7,20 @@ import { RoomMembershipService } from './room-membership.service';
 
 @Injectable()
 export class RoomsService {
-  constructor(private readonly memberships: RoomMembershipService) {}
+  constructor(
+    private readonly memberships: RoomMembershipService,
+    private readonly config: ConfigService,
+  ) {}
 
   async createJoinToken(request: JoinRoomRequest, user: AuthenticatedUser): Promise<JoinRoomResponse> {
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekitUrl = process.env.LIVEKIT_URL;
+    const apiKey = this.config.get<string>('LIVEKIT_API_KEY');
+    const apiSecret = this.config.get<string>('LIVEKIT_API_SECRET');
+    const livekitUrl = this.config.get<string>('LIVEKIT_URL');
 
     if (!apiKey || !apiSecret || !livekitUrl) {
-      throw new Error('LiveKit environment variables are not configured');
+      throw new ServiceUnavailableException(
+        'LiveKit is not configured. Copy .env.example to .env and set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.',
+      );
     }
 
     const role = await this.memberships.resolveRole(request.roomId, user);
