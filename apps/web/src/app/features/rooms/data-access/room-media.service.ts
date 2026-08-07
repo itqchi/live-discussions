@@ -36,11 +36,11 @@ export class RoomMediaService {
   constructor() {
     this.room.on(RoomEvent.Connected, () => {
       this.connected.set(true);
-      this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
+      this.syncAudioPlaybackState();
     });
 
     this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-      this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
+      this.syncAudioPlaybackState();
     });
 
     this.room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
@@ -122,11 +122,15 @@ export class RoomMediaService {
 
   async resumeAudio(): Promise<void> {
     await this.room.startAudio();
-    this.audioPlaybackBlocked.set(!this.room.canPlayAudio);
+    this.syncAudioPlaybackState();
   }
 
   disconnect(): void {
     this.room.disconnect();
+  }
+
+  private syncAudioPlaybackState(): void {
+    this.audioPlaybackBlocked.set(!this.room.canPlaybackAudio);
   }
 
   private attachAudioTrack(track: RemoteAudioTrack): void {
