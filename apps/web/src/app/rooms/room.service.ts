@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
+import type { JoinRoomResponse } from '@live-discussions/contracts';
 import { Room, RoomEvent } from 'livekit-client';
-import type { JoinRoomResponse } from '../../../../../libs/contracts/src/lib/room';
 
 @Injectable({ providedIn: 'root' })
 export class RoomService {
@@ -12,7 +12,11 @@ export class RoomService {
 
   constructor() {
     this.room.on(RoomEvent.Connected, () => this.connected.set(true));
-    this.room.on(RoomEvent.Disconnected, () => this.connected.set(false));
+    this.room.on(RoomEvent.Disconnected, () => {
+      this.connected.set(false);
+      this.microphoneEnabled.set(false);
+      this.cameraEnabled.set(false);
+    });
   }
 
   async connect(session: JoinRoomResponse): Promise<void> {
