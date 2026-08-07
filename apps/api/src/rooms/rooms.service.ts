@@ -17,7 +17,7 @@ export class RoomsService {
       throw new Error('LiveKit environment variables are not configured');
     }
 
-    const role = this.memberships.resolveRole(request.roomId, user);
+    const role = await this.memberships.resolveRole(request.roomId, user);
     const permissions = permissionsForRole(role);
     const participant = {
       userId: user.userId,
