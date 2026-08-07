@@ -1,4 +1,4 @@
-import type { ParticipantPermissions, ParticipantRole } from '../../../../libs/contracts/src/lib/room';
+import type { ParticipantPermissions, ParticipantRole } from '@live-discussions/contracts';
 
 export function permissionsForRole(role: ParticipantRole): ParticipantPermissions {
   switch (role) {
