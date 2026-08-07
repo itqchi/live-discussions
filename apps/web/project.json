@@ -5,7 +5,7 @@
   "projectType": "application",
   "targets": {
     "build": {
-      "executor": "@angular/build:application",
+      "executor": "@nx/angular:application",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/web",
@@ -17,7 +17,8 @@
       }
     },
     "serve": {
-      "executor": "@angular/build:dev-server",
+      "continuous": true,
+      "executor": "@nx/angular:dev-server",
       "options": {
         "buildTarget": "web:build"
       }
