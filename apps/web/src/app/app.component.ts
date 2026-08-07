@@ -3,11 +3,12 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
 import { RoomService } from './rooms/room.service';
+import { VideoTrackComponent } from './rooms/video-track.component';
 
 @Component({
   selector: 'live-discussions-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, VideoTrackComponent],
   template: `
     <main class="page-shell">
       <header class="topbar">
@@ -59,11 +60,27 @@ import { RoomService } from './rooms/room.service';
             <span>{{ roleLabel() }}</span>
           </div>
 
-          <div class="stage">
-            <div class="avatar">{{ initials() }}</div>
-            <strong>{{ displayName || 'You' }}</strong>
-            <small>{{ room.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
-          </div>
+          @if (room.videoTracks().length) {
+            <div class="video-grid">
+              @for (tile of room.videoTracks(); track tile.id) {
+                <article class="video-tile">
+                  <live-discussions-video-track [track]="tile.track" />
+                  <div class="video-label">
+                    <strong>{{ tile.participantName }}</strong>
+                    @if (tile.isLocal) {
+                      <span>You</span>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          } @else {
+            <div class="stage">
+              <div class="avatar">{{ initials() }}</div>
+              <strong>{{ displayName || 'You' }}</strong>
+              <small>{{ room.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
+            </div>
+          }
 
           <div class="controls">
             <button
@@ -113,14 +130,18 @@ import { RoomService } from './rooms/room.service';
     button:disabled { opacity: .42; cursor: not-allowed; }
     .primary { background: #f8fafc; color: #0f172a; border-color: #f8fafc; font-weight: 700; }
     .danger { border-color: #7f1d1d; color: #fecaca; }
-    .room-panel { min-height: 520px; display: flex; flex-direction: column; }
+    .room-panel { min-height: 520px; display: flex; flex-direction: column; gap: 20px; }
     .room-heading { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
     .room-heading > span { color: #cbd5e1; text-transform: capitalize; }
-    .stage { flex: 1; display: grid; place-items: center; align-content: center; gap: 10px; text-align: center; }
+    .stage { flex: 1; display: grid; place-items: center; align-content: center; gap: 10px; text-align: center; min-height: 300px; }
     .avatar { width: 112px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: 2rem; font-weight: 800; background: #334155; border: 1px solid #64748b; }
     .stage small, .hint { color: #94a3b8; }
+    .video-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-content: start; }
+    .video-tile { position: relative; aspect-ratio: 16 / 10; min-height: 180px; border-radius: 18px; overflow: hidden; background: #111827; }
+    .video-label { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 999px; background: rgba(2, 6, 23, .72); backdrop-filter: blur(8px); font-size: .8rem; }
+    .video-label span { color: #94a3b8; }
     .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-    .hint { text-align: center; font-size: .8rem; margin: 18px 0 0; }
+    .hint { text-align: center; font-size: .8rem; margin: 0; }
     .error { margin: 0; color: #fecaca; font-size: .86rem; }
     @media (max-width: 760px) {
       .topbar { flex-direction: column; }
