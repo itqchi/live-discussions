@@ -12,6 +12,7 @@
         "browser": "apps/web/src/main.ts",
         "index": "apps/web/src/index.html",
         "tsConfig": "apps/web/tsconfig.app.json",
+        "polyfills": ["zone.js"],
         "styles": ["apps/web/src/styles.css"]
       }
     },
