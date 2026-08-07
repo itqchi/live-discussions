@@ -2,11 +2,11 @@ packages:
   - 'apps/*'
   - 'libs/*'
 
-onlyBuiltDependencies:
-  - '@parcel/watcher'
-  - 'esbuild'
-  - 'less'
-  - 'lmdb'
-  - 'msgpackr-extract'
-  - 'nx'
-  - 'unrs-resolver'
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  less: true
+  lmdb: true
+  msgpackr-extract: true
+  nx: true
+  unrs-resolver: true
