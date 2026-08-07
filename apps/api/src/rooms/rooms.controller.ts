@@ -1,5 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Post } from '@nestjs/common';
 import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
+import { devIdentityFromHeaders } from '../auth/dev-identity';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
@@ -7,7 +8,10 @@ export class RoomsController {
   constructor(private readonly roomsService: RoomsService) {}
 
   @Post('join')
-  join(@Body() request: JoinRoomRequest): Promise<JoinRoomResponse> {
-    return this.roomsService.createJoinToken(request);
+  join(
+    @Body() request: JoinRoomRequest,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<JoinRoomResponse> {
+    return this.roomsService.createJoinToken(request, devIdentityFromHeaders(headers));
   }
 }
