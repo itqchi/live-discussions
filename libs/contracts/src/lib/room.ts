@@ -7,6 +7,11 @@ export interface ParticipantPermissions {
   canInviteSpeakers: boolean;
 }
 
+export interface AuthenticatedUser {
+  userId: string;
+  displayName: string;
+}
+
 export interface RoomParticipant {
   userId: string;
   displayName: string;
@@ -23,9 +28,6 @@ export interface DiscussionRoom {
 
 export interface JoinRoomRequest {
   roomId: string;
-  userId: string;
-  displayName: string;
-  role: ParticipantRole;
 }
 
 export interface JoinRoomResponse {
