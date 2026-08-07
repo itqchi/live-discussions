@@ -5,7 +5,7 @@
   "projectType": "application",
   "targets": {
     "build": {
-      "executor": "@angular-devkit/build-angular:application",
+      "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/web",
@@ -17,7 +17,7 @@
       }
     },
     "serve": {
-      "executor": "@angular-devkit/build-angular:dev-server",
+      "executor": "@angular/build:dev-server",
       "options": {
         "buildTarget": "web:build"
       }
