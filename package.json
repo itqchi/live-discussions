@@ -9,7 +9,9 @@
     "api": "nx serve api",
     "build:web": "nx build web",
     "build:api": "nx build api",
-    "mobile": "nx start mobile"
+    "mobile": "nx start mobile",
+    "mobile:ios": "nx run-ios mobile",
+    "mobile:android": "nx run-android mobile"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "latest",
@@ -21,6 +23,7 @@
     "@nx/node": "latest",
     "@nx/react-native": "latest",
     "@types/node": "latest",
+    "@types/react": "latest",
     "nx": "latest",
     "typescript": "latest"
   },
@@ -30,11 +33,15 @@
     "@angular/core": "latest",
     "@angular/forms": "latest",
     "@angular/platform-browser": "latest",
+    "@livekit/react-native": "latest",
+    "@livekit/react-native-webrtc": "latest",
     "@nestjs/common": "latest",
     "@nestjs/core": "latest",
     "@nestjs/platform-express": "latest",
     "livekit-client": "latest",
     "livekit-server-sdk": "latest",
+    "react": "latest",
+    "react-native": "latest",
     "reflect-metadata": "latest",
     "rxjs": "latest",
     "tslib": "latest",
