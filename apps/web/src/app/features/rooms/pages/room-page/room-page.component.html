@@ -1,0 +1,142 @@
+<main class="mx-auto max-w-7xl px-6 py-12">
+  <header class="mb-8 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+    <div>
+      <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
+      <h1 class="mt-1 max-w-3xl text-4xl font-bold leading-none tracking-tight md:text-6xl">
+        Conversation first. Camera when you want it.
+      </h1>
+    </div>
+
+    <span
+      class="w-fit rounded-full border px-3 py-2 text-sm"
+      [class.border-emerald-500]="facade.media.connected()"
+      [class.text-emerald-100]="facade.media.connected()"
+      [class.border-slate-600]="!facade.media.connected()"
+      [class.text-slate-400]="!facade.media.connected()"
+    >
+      {{ facade.media.connected() ? 'Connected' : 'Not connected' }}
+    </span>
+  </header>
+
+  <section class="grid gap-5 md:grid-cols-[minmax(260px,340px)_1fr]">
+    <aside class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
+      <form class="grid gap-4" [formGroup]="joinForm" (ngSubmit)="join()">
+        <h2 class="text-xl font-semibold">Join a room</h2>
+
+        <label class="grid gap-2 text-sm text-slate-300">
+          Room ID
+          <input
+            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="roomId"
+            placeholder="e.g. angular-architecture"
+          />
+        </label>
+
+        <label class="grid gap-2 text-sm text-slate-300">
+          Display name
+          <input
+            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="displayName"
+            placeholder="Your name"
+          />
+        </label>
+
+        @if (joinForm.controls.displayName.touched && joinForm.controls.displayName.invalid) {
+          <p class="text-sm text-red-200">Enter a display name of at most 80 characters.</p>
+        }
+
+        <p class="text-xs text-slate-400">Your room role is assigned by the server.</p>
+
+        <button
+          class="rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          type="submit"
+          [disabled]="facade.joining() || facade.media.connected()"
+        >
+          {{ facade.joining() ? 'Joining…' : 'Join discussion' }}
+        </button>
+
+        @if (facade.error()) {
+          <p class="text-sm text-red-200">{{ facade.error() }}</p>
+        }
+      </form>
+    </aside>
+
+    <section class="flex min-h-[520px] flex-col gap-5 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
+      <div class="flex items-center justify-between gap-5">
+        <div>
+          <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
+          <h2 class="mt-1 text-xl font-semibold">{{ joinForm.controls.roomId.value || 'Choose a room' }}</h2>
+        </div>
+        <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
+      </div>
+
+      @if (facade.media.videoTracks().length) {
+        <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          @for (tile of facade.media.videoTracks(); track tile.id) {
+            <article class="relative aspect-video min-h-44 overflow-hidden rounded-2xl bg-slate-900">
+              <live-discussions-video-track [track]="tile.track" />
+              <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs backdrop-blur">
+                <strong>{{ tile.participantName }}</strong>
+                @if (tile.isLocal) {
+                  <span class="text-slate-400">You</span>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      } @else {
+        <div class="grid min-h-72 flex-1 place-content-center place-items-center gap-3 text-center">
+          <div class="grid size-28 place-items-center rounded-full border border-slate-500 bg-slate-700 text-3xl font-bold">
+            {{ initials() }}
+          </div>
+          <strong>{{ joinForm.controls.displayName.value || 'You' }}</strong>
+          <small class="text-slate-400">
+            {{ facade.media.connected() ? 'You are in the room' : 'Join to start listening' }}
+          </small>
+        </div>
+      }
+
+      <div class="flex flex-wrap justify-center gap-2">
+        <button
+          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          (click)="facade.toggleMicrophone()"
+          [disabled]="!facade.media.connected() || !facade.canPublishAudio()"
+        >
+          {{ facade.media.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
+        </button>
+
+        <button
+          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          (click)="facade.toggleCamera()"
+          [disabled]="!facade.media.connected() || !facade.canPublishVideo()"
+        >
+          {{ facade.media.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
+        </button>
+
+        <button
+          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          (click)="facade.toggleScreenShare()"
+          [disabled]="!facade.media.connected() || !facade.canShareScreen()"
+        >
+          {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
+        </button>
+
+        <button
+          class="rounded-xl border border-red-900 px-4 py-3 text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          (click)="facade.leave()"
+          [disabled]="!facade.media.connected()"
+        >
+          Leave
+        </button>
+      </div>
+
+      <p class="text-center text-xs text-slate-400">
+        Publishing capabilities come from the server-issued LiveKit token. Development identity will be replaced by real authentication.
+      </p>
+    </section>
+  </section>
+</main>
