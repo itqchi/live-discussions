@@ -6,7 +6,7 @@ services:
     region: frankfurt
     branch: agent/initial-platform
     autoDeployTrigger: commit
-    buildCommand: npm i && npm run build:api
+    buildCommand: npm i --include=dev && npm run build:api
     startCommand: npm run start:api:production
     healthCheckPath: /rooms
     envVars:
@@ -28,7 +28,7 @@ services:
     name: live-discussions-web
     branch: agent/initial-platform
     autoDeployTrigger: commit
-    buildCommand: npm i && npm run build:web:render
+    buildCommand: npm i --include=dev && npm run build:web:render
     staticPublishPath: ./dist/apps/web/browser
     envVars:
       - key: API_BASE_URL
