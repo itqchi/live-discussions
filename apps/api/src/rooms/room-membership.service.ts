@@ -177,4 +177,31 @@ export class RoomMembershipService {
     );
     if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
   }
+
+  async ensureRole(roomId: string, userId: string, role: ParticipantRole, displayName = userId): Promise<void> {
+    if (!this.database.configured) {
+      const roomRoles = this.rolesByRoom.get(roomId);
+      if (!roomRoles) throw new NotFoundException('Room not found.');
+      const current = roomRoles.get(userId);
+      if (current === 'owner') return;
+      roomRoles.set(userId, role);
+      return;
+    }
+
+    await this.database.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO app_user (id, display_name)
+         VALUES ($1, $2)
+         ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+        [userId, displayName],
+      );
+      await client.query(
+        `INSERT INTO room_member (room_id, user_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (room_id, user_id) DO UPDATE
+         SET role = CASE WHEN room_member.role = 'owner' THEN room_member.role ELSE EXCLUDED.role END`,
+        [roomId, userId, role],
+      );
+    });
+  }
 }
