@@ -168,13 +168,14 @@ export class RoomMediaService {
     });
 
     this.destroyRef.onDestroy(() => {
-      this.cleanupAudioTracks();
-      this.clearStageReactionTimers();
       this.room.unregisterTextStreamHandler(COMMENTS_TOPIC);
       this.room.unregisterTextStreamHandler(COMMENT_REACTIONS_TOPIC);
       this.room.unregisterTextStreamHandler(STAGE_REACTIONS_TOPIC);
       this.room.removeAllListeners();
-      this.room.disconnect();
+      this.cleanupAudioTracks();
+      this.cleanupVideoTracks();
+      this.clearStageReactionTimers();
+      void this.room.disconnect(true);
     });
   }
 
@@ -239,7 +240,21 @@ export class RoomMediaService {
     this.syncAudioPlaybackState();
   }
 
-  disconnect(): void { this.room.disconnect(); }
+  async disconnect(): Promise<void> {
+    this.roomDeleted.set(false);
+    this.cleanupAudioTracks();
+    this.cleanupVideoTracks();
+    this.clearStageReactionTimers();
+    this.resetMediaSignals();
+
+    try {
+      await this.room.disconnect(true);
+    } finally {
+      this.cleanupAudioTracks();
+      this.cleanupVideoTracks();
+      this.resetMediaSignals();
+    }
+  }
 
   private appendComment(comment: RoomComment): void {
     this.comments.update((comments) => {
@@ -420,6 +435,9 @@ export class RoomMediaService {
     const element = this.audioElements.get(track);
     if (!element) return;
     track.detach(element);
+    element.pause();
+    element.removeAttribute('src');
+    element.load();
     element.remove();
     this.audioElements.delete(track);
   }
@@ -427,21 +445,33 @@ export class RoomMediaService {
   private cleanupAudioTracks(): void {
     for (const [track, element] of this.audioElements) {
       track.detach(element);
+      element.pause();
+      element.removeAttribute('src');
+      element.load();
       element.remove();
     }
     this.audioElements.clear();
   }
 
+  private cleanupVideoTracks(): void {
+    for (const tile of this.videoTracks()) tile.track.detach();
+    this.videoTracks.set([]);
+  }
+
   private resetMediaState(): void {
     this.cleanupAudioTracks();
+    this.cleanupVideoTracks();
     this.clearStageReactionTimers();
+    this.resetMediaSignals();
+  }
+
+  private resetMediaSignals(): void {
     this.connected.set(false);
     this.microphoneEnabled.set(false);
     this.cameraEnabled.set(false);
     this.screenSharing.set(false);
     this.audioPlaybackBlocked.set(false);
     this.participants.set([]);
-    this.videoTracks.set([]);
     this.featuredParticipantId.set(null);
   }
 
