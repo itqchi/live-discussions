@@ -7,7 +7,8 @@
     "serve": {
       "executor": "@nx/js:node",
       "options": {
-        "buildTarget": "api:build"
+        "buildTarget": "api:build",
+        "runtimeArgs": ["--env-file=.env"]
       }
     },
     "build": {
