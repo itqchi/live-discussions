@@ -12,6 +12,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
 import { DismissibleDetailsDirective } from '../../../../shared/ui/dismissible-details.directive';
 import { RoomFacade } from '../../data-access/room.facade';
+import type { RoomComment } from '../../data-access/room-media.service';
 import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
 @Component({
@@ -28,10 +29,12 @@ export class RoomPageComponent implements OnInit {
   private readonly formBuilder = inject(FormBuilder);
 
   readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
-  readonly roomPath = `/rooms/${this.roomId}`;
+  readonly roomPath = `/room/${this.roomId}`;
   readonly displayName = this.identity.displayName;
   readonly initials = computed(() => this.initialsFor(this.displayName()));
   readonly settingsOpen = signal(false);
+  readonly replyingToId = signal<string | null>(null);
+  readonly availableReactions = ['👍', '❤️', '😂', '👏', '🔥'];
 
   readonly commentForm = this.formBuilder.nonNullable.group({
     comment: ['', [Validators.required, Validators.maxLength(1000)]],
@@ -42,8 +45,9 @@ export class RoomPageComponent implements OnInit {
   }
 
   @HostListener('document:keydown.escape')
-  closeSettings(): void {
+  closeTransientUi(): void {
     this.settingsOpen.set(false);
+    this.replyingToId.set(null);
   }
 
   openSettings(): void {
@@ -62,9 +66,32 @@ export class RoomPageComponent implements OnInit {
     }
 
     const text = this.commentForm.controls.comment.value;
-    void this.facade.sendComment(text).then((sent) => {
-      if (sent) this.commentForm.reset();
+    void this.facade.sendComment(text, this.replyingToId()).then((sent) => {
+      if (sent) {
+        this.commentForm.reset();
+        this.replyingToId.set(null);
+      }
     });
+  }
+
+  replyTo(commentId: string): void {
+    this.replyingToId.set(commentId);
+  }
+
+  cancelReply(): void {
+    this.replyingToId.set(null);
+  }
+
+  closeRoom(): void {
+    void this.facade.closeRoom().then((closed) => {
+      if (closed) this.settingsOpen.set(false);
+    });
+  }
+
+  reactionEntries(comment: RoomComment): { emoji: string; count: number }[] {
+    return Object.entries(comment.reactions)
+      .filter(([, identities]) => identities.length > 0)
+      .map(([emoji, identities]) => ({ emoji, count: identities.length }));
   }
 
   initialsFor(name: string): string {
