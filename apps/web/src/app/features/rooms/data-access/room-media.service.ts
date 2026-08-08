@@ -16,6 +16,7 @@ export interface VideoTile {
   participantIdentity: string;
   participantName: string;
   isLocal: boolean;
+  source: Track.Source;
   track: LocalVideoTrack | RemoteVideoTrack;
 }
 
@@ -25,6 +26,10 @@ export interface RoomPresenceParticipant {
   role: ParticipantRole;
   raisedHand: boolean;
   isLocal: boolean;
+}
+
+interface LiveRoomMetadata {
+  featuredParticipantId?: string;
 }
 
 @Injectable()
@@ -42,12 +47,14 @@ export class RoomMediaService {
   readonly audioPlaybackBlocked = signal(false);
   readonly videoTracks = signal<VideoTile[]>([]);
   readonly participants = signal<RoomPresenceParticipant[]>([]);
+  readonly featuredParticipantId = signal<string | null>(null);
 
   constructor() {
     this.room.on(RoomEvent.Connected, () => {
       this.connected.set(true);
       this.syncAudioPlaybackState();
       this.syncParticipants();
+      this.syncRoomMetadata(this.room.metadata);
     });
 
     this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => this.syncAudioPlaybackState());
@@ -56,8 +63,9 @@ export class RoomMediaService {
     this.room.on(RoomEvent.ParticipantMetadataChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantNameChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantPermissionsChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.RoomMetadataChanged, (metadata) => this.syncRoomMetadata(metadata));
 
-    this.room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+    this.room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
       if (track.kind === Track.Kind.Audio) {
         this.attachAudioTrack(track as RemoteAudioTrack);
         return;
@@ -69,6 +77,7 @@ export class RoomMediaService {
         participant.identity,
         participant.name || participant.identity,
         false,
+        publication.source,
       );
     });
 
@@ -89,6 +98,7 @@ export class RoomMediaService {
         participant.identity,
         participant.name || participant.identity,
         true,
+        publication.source,
       );
     });
 
@@ -159,6 +169,22 @@ export class RoomMediaService {
     this.participants.set([local, ...remote]);
   }
 
+  private syncRoomMetadata(metadata: string | undefined): void {
+    if (!metadata) {
+      this.featuredParticipantId.set(null);
+      return;
+    }
+
+    try {
+      const featuredParticipantId = (JSON.parse(metadata) as LiveRoomMetadata).featuredParticipantId;
+      this.featuredParticipantId.set(
+        typeof featuredParticipantId === 'string' && featuredParticipantId ? featuredParticipantId : null,
+      );
+    } catch {
+      this.featuredParticipantId.set(null);
+    }
+  }
+
   private toPresenceParticipant(participant: Participant, isLocal: boolean): RoomPresenceParticipant {
     return {
       identity: participant.identity,
@@ -221,6 +247,7 @@ export class RoomMediaService {
     this.audioPlaybackBlocked.set(false);
     this.videoTracks.set([]);
     this.participants.set([]);
+    this.featuredParticipantId.set(null);
   }
 
   private addVideoTrack(
@@ -228,12 +255,13 @@ export class RoomMediaService {
     participantIdentity: string,
     participantName: string,
     isLocal: boolean,
+    source: Track.Source,
   ): void {
     if (this.videoTracks().some((tile) => tile.track === track)) return;
 
     this.videoTracks.update((tiles) => [
       ...tiles,
-      { id: this.nextVideoTileId++, participantIdentity, participantName, isLocal, track },
+      { id: this.nextVideoTileId++, participantIdentity, participantName, isLocal, source, track },
     ]);
   }
 
