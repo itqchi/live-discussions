@@ -4,6 +4,12 @@
   "sourceRoot": "apps/mobile/src",
   "projectType": "application",
   "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p apps/mobile/tsconfig.json --noEmit"
+      }
+    },
     "start": {
       "executor": "@nx/react-native:start"
     },
