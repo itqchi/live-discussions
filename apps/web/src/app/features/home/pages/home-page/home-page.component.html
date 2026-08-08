@@ -1,0 +1,164 @@
+<main class="mx-auto max-w-7xl px-6 py-10">
+  <header class="mb-10 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+    <div>
+      <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
+      <h1 class="mt-2 max-w-3xl text-4xl font-bold leading-tight tracking-tight md:text-6xl">
+        Find a conversation. Or start your own place.
+      </h1>
+      <p class="mt-4 max-w-2xl text-slate-300">
+        Join a live room instantly, or create a House people can become part of and return to.
+      </p>
+    </div>
+
+    <form class="grid gap-2" [formGroup]="identityForm" (ngSubmit)="saveDisplayName()">
+      <label class="text-sm text-slate-300" for="display-name">Your display name</label>
+      <div class="flex gap-2">
+        <input
+          id="display-name"
+          class="min-w-56 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+          formControlName="displayName"
+          placeholder="Your name"
+        />
+        <button class="rounded-xl border border-slate-600 px-4 font-semibold" type="submit">Save</button>
+      </div>
+    </form>
+  </header>
+
+  @if (facade.error()) {
+    <div class="mb-6 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+      {{ facade.error() }}
+    </div>
+  }
+
+  <section class="mb-12">
+    <div class="mb-5 flex items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">LIVE NOW</p>
+        <h2 class="mt-1 text-2xl font-semibold">Rooms you can join</h2>
+      </div>
+      <span class="text-sm text-slate-400">{{ facade.rooms().length }} available</span>
+    </div>
+
+    @if (facade.loading()) {
+      <div class="rounded-3xl border border-slate-700 bg-slate-900/70 p-8 text-slate-400">Loading rooms…</div>
+    } @else if (facade.rooms().length) {
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        @for (room of facade.rooms(); track room.id) {
+          <article class="flex min-h-52 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+            <div>
+              <div class="mb-4 flex items-center justify-between gap-3">
+                <span class="rounded-full bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-200">LIVE</span>
+                <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+              </div>
+              <h3 class="text-2xl font-semibold">{{ room.title }}</h3>
+              <p class="mt-2 text-sm text-slate-400">Join as a listener. Raise your hand when you want to speak.</p>
+            </div>
+
+            <button
+              class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950"
+              type="button"
+              (click)="joinRoom(room.id)"
+            >
+              Join room
+            </button>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+        <h3 class="text-xl font-semibold">No rooms yet</h3>
+        <p class="mt-2 text-slate-400">Start the first conversation below.</p>
+      </div>
+    }
+  </section>
+
+  <section class="grid gap-5 lg:grid-cols-2">
+    <form class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6" [formGroup]="roomForm" (ngSubmit)="createRoom()">
+      <p class="text-xs font-bold tracking-[0.2em] text-sky-300">START A CONVERSATION</p>
+      <h2 class="mt-2 text-2xl font-semibold">Create a room</h2>
+      <p class="mt-2 text-sm text-slate-400">A room is a live discussion. You become its owner and enter immediately.</p>
+
+      <label class="mt-6 grid gap-2 text-sm text-slate-300">
+        Room title
+        <input
+          class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+          formControlName="title"
+          placeholder="Angular architecture, football, music…"
+        />
+      </label>
+
+      <button
+        class="mt-5 w-full rounded-xl bg-sky-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+        type="submit"
+        [disabled]="facade.creatingRoom()"
+      >
+        {{ facade.creatingRoom() ? 'Creating…' : 'Create room' }}
+      </button>
+    </form>
+
+    <form class="rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6" [formGroup]="houseForm" (ngSubmit)="createHouse()">
+      <p class="text-xs font-bold tracking-[0.2em] text-violet-300">BUILD A COMMUNITY</p>
+      <h2 class="mt-2 text-2xl font-semibold">Create your House</h2>
+      <p class="mt-2 text-sm text-slate-400">A House is a community people can join and return to across multiple discussions.</p>
+
+      <div class="mt-6 grid gap-4">
+        <label class="grid gap-2 text-sm text-slate-300">
+          House name
+          <input
+            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="name"
+            placeholder="Frontend Architects"
+          />
+        </label>
+
+        <label class="grid gap-2 text-sm text-slate-300">
+          Description
+          <textarea
+            class="min-h-24 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="description"
+            placeholder="What is this House about?"
+          ></textarea>
+        </label>
+      </div>
+
+      <button
+        class="mt-5 w-full rounded-xl bg-violet-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+        type="submit"
+        [disabled]="facade.creatingHouse()"
+      >
+        {{ facade.creatingHouse() ? 'Creating…' : 'Create House' }}
+      </button>
+    </form>
+  </section>
+
+  @if (facade.houses().length) {
+    <section class="mt-12">
+      <div class="mb-5">
+        <p class="text-xs font-bold tracking-[0.2em] text-violet-300">COMMUNITIES</p>
+        <h2 class="mt-1 text-2xl font-semibold">Houses to join</h2>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        @for (house of facade.houses(); track house.id) {
+          <article class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-xl font-semibold">{{ house.name }}</h3>
+                <p class="mt-2 text-sm text-slate-400">{{ house.description || 'A new community on Live Discussions.' }}</p>
+              </div>
+              <span class="whitespace-nowrap text-xs text-slate-400">{{ house.memberCount }} members</span>
+            </div>
+
+            <button
+              class="mt-6 w-full rounded-xl border border-violet-500/60 px-4 py-3 font-semibold text-violet-100"
+              type="button"
+              (click)="joinHouse(house.id)"
+            >
+              Join House
+            </button>
+          </article>
+        }
+      </div>
+    </section>
+  }
+</main>
