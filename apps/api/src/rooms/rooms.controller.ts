@@ -1,5 +1,10 @@
-import { Body, Controller, Headers, Patch, Post } from '@nestjs/common';
-import type { CreateRoomResponse, JoinRoomResponse, RoomParticipant } from '@live-discussions/contracts';
+import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
+import type {
+  CreateRoomResponse,
+  JoinRoomResponse,
+  RoomParticipant,
+  RoomSummary,
+} from '@live-discussions/contracts';
 import { devIdentityFromHeaders } from '../auth/dev-identity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
@@ -10,6 +15,11 @@ import { RoomsService } from './rooms.service';
 @Controller('rooms')
 export class RoomsController {
   constructor(private readonly roomsService: RoomsService) {}
+
+  @Get()
+  list(): Promise<RoomSummary[]> {
+    return this.roomsService.listRooms();
+  }
 
   @Post()
   create(
