@@ -3,6 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import type {
   CreateHouseRequest,
   CreateHouseResponse,
+  CreateHouseRoomRequest,
+  CreateRoomResponse,
+  GetHouseResponse,
   HouseSummary,
   JoinHouseRequest,
   JoinHouseResponse,
@@ -23,6 +26,15 @@ export class HouseApiService {
     return this.toPromise(
       this.http.get<HouseSummary[]>(`${this.apiBaseUrl}/houses`),
       'Unable to load houses.',
+    );
+  }
+
+  getHouse(houseId: string, devUserId: string, displayName: string): Promise<GetHouseResponse> {
+    return this.toPromise(
+      this.http.get<GetHouseResponse>(`${this.apiBaseUrl}/houses/${houseId}`, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to load the House.',
     );
   }
 
@@ -49,6 +61,20 @@ export class HouseApiService {
         headers: this.devHeaders(devUserId, displayName),
       }),
       'Unable to join the house.',
+    );
+  }
+
+  createRoom(
+    houseId: string,
+    request: CreateHouseRoomRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<CreateRoomResponse> {
+    return this.toPromise(
+      this.http.post<CreateRoomResponse>(`${this.apiBaseUrl}/houses/${houseId}/rooms`, request, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to create the room in this House.',
     );
   }
 
