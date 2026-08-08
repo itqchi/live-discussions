@@ -42,6 +42,8 @@ interface LiveRoomMetadata {
 }
 
 const COMMENTS_TOPIC = 'live-discussions.comments';
+const COMMENTS_CACHE_PREFIX = 'live-discussions.room-comments.';
+const MAX_CACHED_COMMENTS = 200;
 
 @Injectable()
 export class RoomMediaService {
@@ -66,21 +68,19 @@ export class RoomMediaService {
       const text = (await reader.readAll()).trim();
       if (!text) return;
 
-      this.comments.update((comments) => [
-        ...comments,
-        {
-          id: reader.info.id,
-          participantIdentity: participantInfo.identity,
-          participantName: this.participantName(participantInfo.identity),
-          text,
-          timestamp: reader.info.timestamp,
-          isLocal: false,
-        },
-      ]);
+      this.appendComment({
+        id: reader.info.id,
+        participantIdentity: participantInfo.identity,
+        participantName: this.participantName(participantInfo.identity),
+        text,
+        timestamp: reader.info.timestamp,
+        isLocal: false,
+      });
     });
 
     this.room.on(RoomEvent.Connected, () => {
       this.connected.set(true);
+      this.restoreCachedComments();
       this.syncAudioPlaybackState();
       this.syncParticipants();
       this.syncRoomMetadata(this.room.metadata);
@@ -188,17 +188,14 @@ export class RoomMediaService {
       topic: COMMENTS_TOPIC,
     });
 
-    this.comments.update((comments) => [
-      ...comments,
-      {
-        id: info.id,
-        participantIdentity: this.room.localParticipant.identity,
-        participantName: this.room.localParticipant.name || this.room.localParticipant.identity,
-        text: normalizedText,
-        timestamp: Date.now(),
-        isLocal: true,
-      },
-    ]);
+    this.appendComment({
+      id: info.id,
+      participantIdentity: this.room.localParticipant.identity,
+      participantName: this.room.localParticipant.name || this.room.localParticipant.identity,
+      text: normalizedText,
+      timestamp: Date.now(),
+      isLocal: true,
+    });
   }
 
   async resumeAudio(): Promise<void> {
@@ -208,6 +205,44 @@ export class RoomMediaService {
 
   disconnect(): void {
     this.room.disconnect();
+  }
+
+  private appendComment(comment: RoomComment): void {
+    this.comments.update((comments) => {
+      if (comments.some((existing) => existing.id === comment.id)) return comments;
+      const next = [...comments, comment].slice(-MAX_CACHED_COMMENTS);
+      this.persistComments(next);
+      return next;
+    });
+  }
+
+  private restoreCachedComments(): void {
+    const roomName = this.room.name;
+    if (!roomName) return;
+
+    try {
+      const cached = localStorage.getItem(`${COMMENTS_CACHE_PREFIX}${roomName}`);
+      if (!cached) {
+        this.comments.set([]);
+        return;
+      }
+
+      const parsed = JSON.parse(cached) as RoomComment[];
+      this.comments.set(Array.isArray(parsed) ? parsed.slice(-MAX_CACHED_COMMENTS) : []);
+    } catch {
+      this.comments.set([]);
+    }
+  }
+
+  private persistComments(comments: RoomComment[]): void {
+    const roomName = this.room.name;
+    if (!roomName) return;
+
+    try {
+      localStorage.setItem(`${COMMENTS_CACHE_PREFIX}${roomName}`, JSON.stringify(comments));
+    } catch {
+      // Comment delivery should keep working even when browser storage is unavailable.
+    }
   }
 
   private syncLocalMediaState(): void {
@@ -327,7 +362,6 @@ export class RoomMediaService {
     this.screenSharing.set(false);
     this.audioPlaybackBlocked.set(false);
     this.participants.set([]);
-    this.comments.set([]);
     this.videoTracks.set([]);
     this.featuredParticipantId.set(null);
   }
