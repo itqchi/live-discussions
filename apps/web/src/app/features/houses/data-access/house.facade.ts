@@ -3,7 +3,6 @@ import { Router } from '@angular/router';
 import type { GetHouseResponse, HouseDetail, HouseMemberRole } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomNavigationService } from '../../../core/room-navigation.service';
-import { roomSlugFromName } from '../../../core/room-route.util';
 import { HouseApiService } from './house-api.service';
 
 @Injectable()
@@ -22,6 +21,7 @@ export class HouseFacade {
   readonly updatingMemberId = signal<string | null>(null);
   readonly closingRoomId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
+
   readonly canManageMembers = computed(() => this.role() === 'owner');
   readonly canManageRooms = computed(() => this.role() === 'owner' || this.role() === 'admin');
 
@@ -29,7 +29,7 @@ export class HouseFacade {
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.applyResponse(await this.api.getHouse(houseId, this.identity.userId, this.displayName()));
+      this.applyResponse(await this.api.getHouse(houseId));
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to load the House.'));
     } finally {
@@ -37,15 +37,18 @@ export class HouseFacade {
     }
   }
 
-  setDisplayName(displayName: string): void { this.identity.setDisplayName(displayName); }
+  setDisplayName(displayName: string): void {
+    this.identity.setDisplayName(displayName);
+  }
 
   async join(): Promise<void> {
     const house = this.house();
     if (!house || !this.requireDisplayName()) return;
+
     this.joining.set(true);
     this.error.set(null);
     try {
-      const response = await this.api.joinHouse({ houseId: house.id }, this.identity.userId, this.displayName());
+      const response = await this.api.joinHouse({ houseId: house.id });
       this.house.update((current) => current ? { ...current, memberCount: response.house.memberCount } : current);
       this.role.set(response.role);
       await this.load(house.id);
@@ -56,8 +59,13 @@ export class HouseFacade {
     }
   }
 
-  promoteToAdmin(userId: string): Promise<void> { return this.updateMemberRole(userId, 'admin'); }
-  demoteToMember(userId: string): Promise<void> { return this.updateMemberRole(userId, 'member'); }
+  promoteToAdmin(userId: string): Promise<void> {
+    return this.updateMemberRole(userId, 'admin');
+  }
+
+  demoteToMember(userId: string): Promise<void> {
+    return this.updateMemberRole(userId, 'member');
+  }
 
   async createRoom(title: string): Promise<void> {
     const house = this.house();
@@ -66,16 +74,11 @@ export class HouseFacade {
       if (!normalizedTitle) this.error.set('Enter a room title.');
       return;
     }
+
     this.creatingRoom.set(true);
     this.error.set(null);
     try {
-      const slug = roomSlugFromName(normalizedTitle);
-      const response = await this.api.createRoom(
-        house.id,
-        { roomId: slug, title: normalizedTitle },
-        this.identity.userId,
-        this.displayName(),
-      );
+      const response = await this.api.createRoom(house.id, { title: normalizedTitle });
       this.navigation.rememberOrigin(response.room.slug, `/houses/${house.id}`);
       await this.router.navigate(['/room', response.room.slug]);
     } catch (error) {
@@ -88,11 +91,13 @@ export class HouseFacade {
   joinRoom(roomId: string): Promise<boolean> {
     const house = this.house();
     if (!house || !this.requireDisplayName()) return Promise.resolve(false);
+
     const room = house.rooms.find((candidate) => candidate.id === roomId);
     if (!room) {
       this.error.set('Room not found.');
       return Promise.resolve(false);
     }
+
     this.navigation.rememberOrigin(room.slug, `/houses/${house.id}`);
     return this.router.navigate(['/room', room.slug]);
   }
@@ -100,10 +105,11 @@ export class HouseFacade {
   async closeRoom(roomId: string): Promise<void> {
     const house = this.house();
     if (!house || !this.canManageRooms()) return;
+
     this.closingRoomId.set(roomId);
     this.error.set(null);
     try {
-      await this.api.closeRoom(house.id, roomId, this.identity.userId, this.displayName());
+      await this.api.closeRoom(house.id, roomId);
       this.house.update((current) => current ? {
         ...current,
         roomCount: Math.max(0, current.roomCount - 1),
@@ -117,15 +123,18 @@ export class HouseFacade {
     }
   }
 
-  goHome(): Promise<boolean> { return this.router.navigate(['/']); }
+  goHome(): Promise<boolean> {
+    return this.router.navigate(['/']);
+  }
 
   private async updateMemberRole(userId: string, role: 'admin' | 'member'): Promise<void> {
     const house = this.house();
     if (!house || !this.canManageMembers()) return;
+
     this.updatingMemberId.set(userId);
     this.error.set(null);
     try {
-      const member = await this.api.updateMemberRole(house.id, { userId, role }, this.identity.userId, this.displayName());
+      const member = await this.api.updateMemberRole(house.id, { userId, role });
       this.house.update((current) => current ? {
         ...current,
         members: current.members.map((existing) => existing.userId === member.userId ? member : existing),
