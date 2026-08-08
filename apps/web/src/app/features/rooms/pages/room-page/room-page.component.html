@@ -1,13 +1,9 @@
-<main class="mx-auto max-w-[1600px] px-4 py-8 sm:px-6">
+<main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
   <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
     <div>
       <a class="mb-3 inline-flex text-sm text-slate-400 hover:text-slate-100" routerLink="/">← Back to Home</a>
       <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
       <h1 class="mt-1 text-3xl font-bold tracking-tight md:text-5xl">{{ roomId }}</h1>
-      <p class="mt-2 text-sm text-slate-400">
-        {{ displayName() || 'No display name set' }}
-        @if (facade.connected()) { · <span class="capitalize">{{ facade.roleLabel() }}</span> }
-      </p>
     </div>
 
     <span
@@ -27,34 +23,35 @@
     </div>
   }
 
-  <section class="grid min-w-0 gap-5 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
+  <section class="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
     <aside class="flex max-h-[760px] min-h-[620px] flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/80 backdrop-blur">
       <div class="border-b border-slate-800 p-5">
         <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
-        <h2 class="mt-1 break-all text-lg font-semibold">{{ roomId }}</h2>
-        <p class="mt-2 text-xs text-slate-500">Comments</p>
+        <h2 class="mt-1 break-all text-xl font-semibold">{{ roomId }}</h2>
+        <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
+          <span>{{ displayName() || 'No display name' }}</span>
+          @if (facade.connected()) {
+            <span>·</span>
+            <span class="capitalize">{{ facade.roleLabel() }}</span>
+          }
+        </div>
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-4">
         @if (facade.comments().length) {
-          <div class="grid gap-4">
+          <div class="grid gap-3">
             @for (comment of facade.comments(); track comment.id) {
-              <article>
-                <div class="mb-1 flex items-center gap-2">
-                  <div class="grid size-7 shrink-0 place-items-center rounded-full bg-slate-800 text-[10px] font-bold">
-                    {{ initialsFor(comment.participantName) }}
-                  </div>
-                  <strong class="min-w-0 truncate text-xs text-slate-300">{{ comment.participantName }}</strong>
+              <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+                <div class="flex items-center justify-between gap-2">
+                  <strong class="truncate text-xs text-slate-300">{{ comment.participantName }}</strong>
                   @if (comment.isLocal) { <span class="text-[10px] text-slate-500">You</span> }
                 </div>
-                <p class="whitespace-pre-wrap break-words rounded-xl bg-slate-950/70 px-3 py-2.5 text-sm leading-5 text-slate-200">
-                  {{ comment.text }}
-                </p>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-200">{{ comment.text }}</p>
               </article>
             }
           </div>
         } @else {
-          <div class="grid h-full min-h-40 place-items-center px-2 text-center">
+          <div class="grid min-h-52 place-items-center text-center">
             <div>
               <div class="mx-auto grid size-12 place-items-center rounded-full border border-slate-700 bg-slate-950">💬</div>
               <p class="mt-3 text-sm text-slate-400">No comments yet.</p>
@@ -64,16 +61,14 @@
       </div>
 
       <form class="border-t border-slate-800 p-4" [formGroup]="commentForm" (ngSubmit)="sendComment()">
-        <label class="sr-only" for="room-comment">Add a comment</label>
         <textarea
-          id="room-comment"
-          class="min-h-24 w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-50 outline-none placeholder:text-slate-600 focus:border-slate-500 disabled:opacity-50"
+          class="min-h-24 w-full resize-y rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-50 outline-none placeholder:text-slate-600 focus:border-slate-500 disabled:opacity-50"
           formControlName="comment"
           placeholder="Write a comment…"
           [disabled]="!facade.connected() || facade.sendingComment()"
         ></textarea>
         <button
-          class="mt-2 w-full rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          class="mt-2 w-full rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-40"
           type="submit"
           [disabled]="!facade.connected() || commentForm.invalid || facade.sendingComment()"
         >
@@ -113,20 +108,18 @@
           <div class="max-w-sm px-6 text-center">
             <div class="mx-auto grid size-20 place-items-center rounded-full border border-slate-700 bg-slate-900 text-2xl">◉</div>
             <h3 class="mt-4 text-lg font-semibold">No camera or screen share yet</h3>
-            <p class="mt-2 text-sm leading-6 text-slate-400">
-              Speakers can start their camera or share their screen using the controls below.
-            </p>
+            <p class="mt-2 text-sm leading-6 text-slate-400">Speakers can start their camera or share their screen using the controls below.</p>
           </div>
         }
       </div>
 
-      @if (facade.cameraThumbnails().length) {
+      @if (facade.mediaThumbnails().length) {
         <div class="mt-4 flex gap-3 overflow-x-auto pb-2">
-          @for (tile of facade.cameraThumbnails(); track tile.id) {
+          @for (tile of facade.mediaThumbnails(); track tile.id) {
             <article class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 sm:w-40">
               <live-discussions-video-track [track]="tile.track" />
               <div class="absolute inset-x-0 bottom-0 truncate bg-slate-950/75 px-2 py-1.5 text-xs backdrop-blur">
-                {{ tile.participantName }}
+                {{ tile.participantName }} · {{ tile.source === 'screen_share' ? 'Screen' : 'Camera' }}
               </div>
             </article>
           }
@@ -136,62 +129,28 @@
       <div class="mt-5 flex flex-wrap justify-center gap-2 border-t border-slate-800 pt-5">
         @if (!facade.connected()) {
           @if (displayName()) {
-            <button
-              class="rounded-xl bg-slate-50 px-5 py-3 font-semibold text-slate-950 disabled:opacity-40"
-              type="button"
-              (click)="join()"
-              [disabled]="facade.joining()"
-            >
+            <button class="rounded-xl bg-slate-50 px-5 py-3 font-semibold text-slate-950 disabled:opacity-40" type="button" (click)="join()" [disabled]="facade.joining()">
               {{ facade.joining() ? 'Joining…' : 'Join room' }}
             </button>
           } @else {
             <a class="rounded-xl border border-slate-600 px-5 py-3 font-semibold" routerLink="/">Set your name on Home</a>
           }
         } @else {
-          <button
-            class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-            type="button"
-            (click)="facade.toggleMicrophone()"
-            [disabled]="!facade.canPublishAudio()"
-          >
+          <button class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40" type="button" (click)="facade.toggleMicrophone()" [disabled]="!facade.canPublishAudio()">
             {{ facade.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
           </button>
-
-          <button
-            class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-            type="button"
-            (click)="facade.toggleCamera()"
-            [disabled]="!facade.canPublishVideo()"
-          >
+          <button class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40" type="button" (click)="facade.toggleCamera()" [disabled]="!facade.canPublishVideo()">
             {{ facade.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
           </button>
-
-          <button
-            class="rounded-xl border border-sky-700 bg-sky-950/30 px-4 py-3 text-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
-            type="button"
-            (click)="facade.toggleScreenShare()"
-            [disabled]="!facade.canShareScreen()"
-          >
+          <button class="rounded-xl border border-sky-700 bg-sky-950/30 px-4 py-3 text-sky-100 disabled:cursor-not-allowed disabled:opacity-40" type="button" (click)="facade.toggleScreenShare()" [disabled]="!facade.canShareScreen()">
             {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
           </button>
-
           @if (facade.currentRole() === 'listener') {
-            <button
-              class="rounded-xl border border-amber-700 px-4 py-3 text-amber-100"
-              type="button"
-              (click)="facade.toggleRaisedHand()"
-            >
+            <button class="rounded-xl border border-amber-700 px-4 py-3 text-amber-100" type="button" (click)="facade.toggleRaisedHand()">
               {{ facade.raisedHand() ? 'Lower hand' : 'Raise hand' }}
             </button>
           }
-
-          <button
-            class="rounded-xl border border-red-900 px-4 py-3 text-red-200"
-            type="button"
-            (click)="facade.leave()"
-          >
-            Leave
-          </button>
+          <button class="rounded-xl border border-red-900 px-4 py-3 text-red-200" type="button" (click)="facade.leave()">Leave</button>
         }
       </div>
     </section>
@@ -215,9 +174,7 @@
           <div class="grid gap-1">
             @for (person of facade.stageParticipants(); track person.identity) {
               <div class="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-slate-800/70">
-                <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
-                  {{ initialsFor(person.name) }}
-                </div>
+                <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">{{ initialsFor(person.name) }}</div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5">
                     <strong class="truncate text-sm">{{ person.name }}</strong>
@@ -232,31 +189,19 @@
                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
                     <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
                       <button
-                        class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800"
+                        class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600"
                         type="button"
                         (click)="facade.featureParticipant(person.identity)"
+                        [disabled]="!facade.hasCamera(person.identity)"
                       >
-                        Feature camera
+                        {{ facade.hasCamera(person.identity) ? 'Feature camera' : 'Camera is off' }}
                       </button>
 
                       @if (!person.isLocal && person.role === 'speaker') {
-                        <button
-                          class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800"
-                          type="button"
-                          (click)="facade.moveToAudience(person.identity)"
-                        >
-                          Move to audience
-                        </button>
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.moveToAudience(person.identity)">Move to audience</button>
                       }
-
                       @if (!person.isLocal && person.role !== 'owner') {
-                        <button
-                          class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60"
-                          type="button"
-                          (click)="facade.removeParticipant(person.identity)"
-                        >
-                          Remove from room
-                        </button>
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
                       }
                     </div>
                   </details>
@@ -277,9 +222,7 @@
           <div class="grid gap-1">
             @for (person of facade.audienceParticipants(); track person.identity) {
               <div class="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-slate-800/70">
-                <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
-                  {{ initialsFor(person.name) }}
-                </div>
+                <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">{{ initialsFor(person.name) }}</div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5">
                     <strong class="truncate text-sm">{{ person.name }}</strong>
@@ -293,20 +236,8 @@
                   <details class="relative shrink-0">
                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
                     <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
-                      <button
-                        class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800"
-                        type="button"
-                        (click)="facade.promoteToSpeaker(person.identity)"
-                      >
-                        Invite to speak
-                      </button>
-                      <button
-                        class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60"
-                        type="button"
-                        (click)="facade.removeParticipant(person.identity)"
-                      >
-                        Remove from room
-                      </button>
+                      <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(person.identity)">Invite to speak</button>
+                      <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
                     </div>
                   </details>
                 }
