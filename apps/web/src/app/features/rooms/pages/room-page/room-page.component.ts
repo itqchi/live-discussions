@@ -36,12 +36,20 @@ export class RoomPageComponent {
   });
 
   join(): void {
-    if (this.joinForm.invalid) {
-      this.joinForm.markAllAsTouched();
-      return;
-    }
-
+    if (!this.validateForm()) return;
     const { roomId, displayName } = this.joinForm.getRawValue();
     void this.facade.join(roomId, displayName);
+  }
+
+  createAndJoin(): void {
+    if (!this.validateForm()) return;
+    const { roomId, displayName } = this.joinForm.getRawValue();
+    void this.facade.createAndJoin(roomId, displayName);
+  }
+
+  private validateForm(): boolean {
+    if (this.joinForm.valid) return true;
+    this.joinForm.markAllAsTouched();
+    return false;
   }
 }
