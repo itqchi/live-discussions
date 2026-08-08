@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
   AuthenticatedUser,
@@ -27,6 +27,8 @@ interface LiveRoomMetadata {
 
 @Injectable()
 export class RoomsService {
+  private readonly logger = new Logger(RoomsService.name);
+
   constructor(
     private readonly memberships: RoomMembershipService,
     private readonly config: ConfigService,
@@ -147,19 +149,26 @@ export class RoomsService {
   ): Promise<void> {
     const permissions = permissionsForRole(role);
     const roomId = await this.memberships.resolveRoomId(roomIdentifier);
+    const onStage = role !== 'listener';
 
     try {
       await this.roomServiceClient().updateParticipant(roomId, userId, {
         metadata: JSON.stringify({ role }),
-        attributes: { raisedHand: 'false' },
+        attributes: {
+          raisedHand: 'false',
+          onStage: onStage ? 'true' : 'false',
+        },
         permission: {
           canSubscribe: true,
           canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
           canPublishData: true,
         },
       });
-    } catch {
+    } catch (error) {
       // Persistence is authoritative. Offline participants receive the persisted role when they next join.
+      this.logger.debug(
+        `Skipped live role sync for ${userId} in room ${roomId}: ${this.errorMessage(error)}`,
+      );
     }
   }
 
@@ -318,5 +327,9 @@ export class RoomsService {
     if (!apiSecret) invalidFields.push('LIVEKIT_API_SECRET (missing)');
     else if (apiSecret === 'replace-me') invalidFields.push('LIVEKIT_API_SECRET (placeholder)');
     return invalidFields;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error && error.message ? error.message : 'unknown LiveKit error';
   }
 }
