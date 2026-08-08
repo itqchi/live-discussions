@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AuthenticatedUser, ParticipantRole } from '@live-discussions/contracts';
+import type { AuthenticatedUser, ParticipantRole, RoomSummary } from '@live-discussions/contracts';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
@@ -8,6 +8,38 @@ export class RoomMembershipService {
   private readonly roomTitles = new Map<string, string>();
 
   constructor(private readonly database: DatabaseService) {}
+
+  async listRooms(): Promise<RoomSummary[]> {
+    if (!this.database.configured) {
+      return [...this.roomTitles.entries()]
+        .map(([id, title]) => ({
+          id,
+          title,
+          isLive: true,
+          memberCount: this.rolesByRoom.get(id)?.size ?? 0,
+        }))
+        .sort((left, right) => left.title.localeCompare(right.title));
+    }
+
+    const result = await this.database.query<{
+      id: string;
+      title: string;
+      member_count: string;
+    }>(
+      `SELECT room.id, room.title, COUNT(member.user_id)::text AS member_count
+       FROM discussion_room room
+       LEFT JOIN room_member member ON member.room_id = room.id
+       GROUP BY room.id, room.title
+       ORDER BY room.title ASC`,
+    );
+
+    return result.rows.map((room) => ({
+      id: room.id,
+      title: room.title,
+      isLive: true,
+      memberCount: Number(room.member_count),
+    }));
+  }
 
   async createRoom(roomId: string, title: string, owner: AuthenticatedUser): Promise<void> {
     if (!this.database.configured) {
