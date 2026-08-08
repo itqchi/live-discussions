@@ -193,7 +193,15 @@ export class RoomMediaService {
   }
 
   async setScreenShare(enabled: boolean): Promise<void> {
-    const publication = await this.room.localParticipant.setScreenShareEnabled(enabled);
+    const publication = await this.room.localParticipant.setScreenShareEnabled(
+      enabled,
+      enabled
+        ? {
+            audio: true,
+            systemAudio: 'include',
+          }
+        : undefined,
+    );
     if (enabled && !publication) throw new Error('Screen sharing was not started. Your browser may have cancelled or blocked the share request.');
     this.syncLocalMediaState();
   }
