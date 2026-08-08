@@ -1,8 +1,9 @@
 import { DOCUMENT } from '@angular/common';
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import type { JoinRoomResponse } from '@live-discussions/contracts';
+import type { JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
 import {
   type LocalVideoTrack,
+  type Participant,
   type RemoteAudioTrack,
   type RemoteVideoTrack,
   Room,
@@ -16,6 +17,14 @@ export interface VideoTile {
   participantName: string;
   isLocal: boolean;
   track: LocalVideoTrack | RemoteVideoTrack;
+}
+
+export interface RoomPresenceParticipant {
+  identity: string;
+  name: string;
+  role: ParticipantRole;
+  raisedHand: boolean;
+  isLocal: boolean;
 }
 
 @Injectable()
@@ -32,16 +41,21 @@ export class RoomMediaService {
   readonly screenSharing = signal(false);
   readonly audioPlaybackBlocked = signal(false);
   readonly videoTracks = signal<VideoTile[]>([]);
+  readonly participants = signal<RoomPresenceParticipant[]>([]);
 
   constructor() {
     this.room.on(RoomEvent.Connected, () => {
       this.connected.set(true);
       this.syncAudioPlaybackState();
+      this.syncParticipants();
     });
 
-    this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-      this.syncAudioPlaybackState();
-    });
+    this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => this.syncAudioPlaybackState());
+    this.room.on(RoomEvent.ParticipantConnected, () => this.syncParticipants());
+    this.room.on(RoomEvent.ParticipantAttributesChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.ParticipantMetadataChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.ParticipantNameChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.ParticipantPermissionsChanged, () => this.syncParticipants());
 
     this.room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
       if (track.kind === Track.Kind.Audio) {
@@ -79,10 +93,7 @@ export class RoomMediaService {
     });
 
     this.room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
-      if (publication.source === Track.Source.ScreenShare) {
-        this.screenSharing.set(false);
-      }
-
+      if (publication.source === Track.Source.ScreenShare) this.screenSharing.set(false);
       if (publication.track) this.removeVideoTrack(publication.track);
     });
 
@@ -90,6 +101,7 @@ export class RoomMediaService {
       this.videoTracks.update((tiles) =>
         tiles.filter((tile) => tile.participantIdentity !== participant.identity),
       );
+      this.syncParticipants();
     });
 
     this.room.on(RoomEvent.Disconnected, () => this.resetMediaState());
@@ -133,6 +145,45 @@ export class RoomMediaService {
     this.audioPlaybackBlocked.set(!this.room.canPlaybackAudio);
   }
 
+  private syncParticipants(): void {
+    if (!this.connected()) {
+      this.participants.set([]);
+      return;
+    }
+
+    const local = this.toPresenceParticipant(this.room.localParticipant, true);
+    const remote = [...this.room.remoteParticipants.values()].map((participant) =>
+      this.toPresenceParticipant(participant, false),
+    );
+
+    this.participants.set([local, ...remote]);
+  }
+
+  private toPresenceParticipant(participant: Participant, isLocal: boolean): RoomPresenceParticipant {
+    return {
+      identity: participant.identity,
+      name: participant.name || participant.identity,
+      role: this.roleFromMetadata(participant.metadata),
+      raisedHand: participant.attributes['raisedHand'] === 'true',
+      isLocal,
+    };
+  }
+
+  private roleFromMetadata(metadata: string | undefined): ParticipantRole {
+    if (!metadata) return 'listener';
+
+    try {
+      const role = (JSON.parse(metadata) as { role?: string }).role;
+      if (role === 'owner' || role === 'moderator' || role === 'speaker' || role === 'listener') {
+        return role;
+      }
+    } catch {
+      // Treat malformed application metadata as the least-privileged display role.
+    }
+
+    return 'listener';
+  }
+
   private attachAudioTrack(track: RemoteAudioTrack): void {
     if (this.audioElements.has(track)) return;
 
@@ -169,6 +220,7 @@ export class RoomMediaService {
     this.screenSharing.set(false);
     this.audioPlaybackBlocked.set(false);
     this.videoTracks.set([]);
+    this.participants.set([]);
   }
 
   private addVideoTrack(
