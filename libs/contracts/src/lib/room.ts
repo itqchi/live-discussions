@@ -67,7 +67,7 @@ export interface UpdateParticipantRoleRequest {
 
 export interface SetFeaturedParticipantRequest {
   roomId: string;
-  participantId: string;
+  participantId: string | null;
 }
 
 export interface RemoveParticipantRequest {
