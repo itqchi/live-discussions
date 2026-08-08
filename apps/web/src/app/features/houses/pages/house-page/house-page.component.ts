@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { DismissibleDetailsDirective } from '../../../../shared/ui/dismissible-details.directive';
 import { HouseFacade } from '../../data-access/house.facade';
 
 @Component({
   selector: 'live-discussions-house-page',
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DismissibleDetailsDirective],
   templateUrl: './house-page.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
