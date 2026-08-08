@@ -13,6 +13,7 @@
         "index": "apps/web/src/index.html",
         "tsConfig": "apps/web/tsconfig.app.json",
         "polyfills": ["zone.js"],
+        "assets": ["apps/web/src/runtime-config.js"],
         "styles": ["apps/web/src/styles.css"]
       }
     },
