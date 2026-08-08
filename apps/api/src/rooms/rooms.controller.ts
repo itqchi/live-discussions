@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Headers, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post } from '@nestjs/common';
 import type {
+  AuthenticatedUser,
   CreateRoomResponse,
   JoinRoomResponse,
   RoomParticipant,
   RoomSummary,
 } from '@live-discussions/contracts';
-import { devIdentityFromHeaders } from '../auth/dev-identity';
+import { DevUser } from '../auth/dev-user.decorator';
 import { CloseRoomDto } from './dto/close-room.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
@@ -28,64 +29,64 @@ export class RoomsController {
   @Post()
   create(
     @Body() request: CreateRoomDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<CreateRoomResponse> {
-    return this.roomsService.createRoom(request, devIdentityFromHeaders(headers));
+    return this.roomsService.createRoom(request, user);
   }
 
   @Post('join')
   join(
     @Body() request: JoinRoomDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<JoinRoomResponse> {
-    return this.roomsService.createJoinToken(request, devIdentityFromHeaders(headers));
+    return this.roomsService.createJoinToken(request, user);
   }
 
   @Patch('close')
   async closeRoom(
     @Body() request: CloseRoomDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.closeRoom(request, devIdentityFromHeaders(headers));
+    await this.roomsService.closeRoom(request, user);
   }
 
   @Patch('hand')
   async setRaisedHand(
     @Body() request: RaiseHandDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.setRaisedHand(request, devIdentityFromHeaders(headers));
+    await this.roomsService.setRaisedHand(request, user);
   }
 
   @Patch('stage-presence')
   async setStagePresence(
     @Body() request: SetStagePresenceDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.setStagePresence(request, devIdentityFromHeaders(headers));
+    await this.roomsService.setStagePresence(request, user);
   }
 
   @Patch('featured-participant')
   async setFeaturedParticipant(
     @Body() request: SetFeaturedParticipantDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.setFeaturedParticipant(request, devIdentityFromHeaders(headers));
+    await this.roomsService.setFeaturedParticipant(request, user);
   }
 
   @Patch('participants/role')
   updateParticipantRole(
     @Body() request: UpdateParticipantRoleDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<RoomParticipant> {
-    return this.roomsService.updateParticipantRole(request, devIdentityFromHeaders(headers));
+    return this.roomsService.updateParticipantRole(request, user);
   }
 
   @Delete('participants')
   async removeParticipant(
     @Body() request: RemoveParticipantDto,
-    @Headers() headers: Record<string, string | string[] | undefined>,
+    @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.removeParticipant(request, devIdentityFromHeaders(headers));
+    await this.roomsService.removeParticipant(request, user);
   }
 }
