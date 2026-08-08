@@ -89,11 +89,16 @@ export class RoomsService {
     actor: AuthenticatedUser,
   ): Promise<void> {
     await this.assertCanModerate(request.roomId, actor.userId);
+    const roomService = this.roomServiceClient();
+
+    if (!request.participantId) {
+      await roomService.updateRoomMetadata(request.roomId, JSON.stringify({} satisfies LiveRoomMetadata));
+      return;
+    }
 
     const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
     if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
 
-    const roomService = this.roomServiceClient();
     await roomService.getParticipant(request.roomId, request.participantId);
     await roomService.updateRoomMetadata(
       request.roomId,
@@ -152,10 +157,6 @@ export class RoomsService {
         canPublishData: true,
       },
     });
-
-    if (request.role === 'listener') {
-      await this.clearFeaturedParticipantIfMatches(roomService, request.roomId, request.participantId);
-    }
 
     return {
       userId: info.identity,
