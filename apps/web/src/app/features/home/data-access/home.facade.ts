@@ -88,7 +88,7 @@ export class HomeFacade {
         this.identity.userId,
         this.displayName(),
       );
-      this.houses.update((houses) => [...houses, response.house].sort((a, b) => a.name.localeCompare(b.name)));
+      await this.router.navigate(['/houses', response.house.id]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create the house.'));
     } finally {
@@ -101,17 +101,19 @@ export class HomeFacade {
     this.error.set(null);
 
     try {
-      const response = await this.housesApi.joinHouse(
+      await this.housesApi.joinHouse(
         { houseId },
         this.identity.userId,
         this.displayName(),
       );
-      this.houses.update((houses) =>
-        houses.map((house) => (house.id === response.house.id ? response.house : house)),
-      );
+      await this.router.navigate(['/houses', houseId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the house.'));
     }
+  }
+
+  openHouse(houseId: string): Promise<boolean> {
+    return this.router.navigate(['/houses', houseId]);
   }
 
   private requireDisplayName(): boolean {
