@@ -1,3 +1,6 @@
+DELETE FROM discussion_room
+WHERE is_live = FALSE;
+
 ALTER TABLE discussion_room
 ADD COLUMN IF NOT EXISTS slug TEXT;
 
