@@ -1,0 +1,142 @@
+<main class="mx-auto max-w-7xl px-6 py-10">
+  <button class="mb-6 text-sm text-slate-400 hover:text-slate-200" type="button" (click)="facade.goHome()">
+    ← Back to Home
+  </button>
+
+  @if (facade.loading()) {
+    <div class="rounded-3xl border border-slate-700 bg-slate-900/70 p-8 text-slate-400">Loading House…</div>
+  } @else if (facade.house(); as house) {
+    <header class="mb-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] text-violet-300">HOUSE</p>
+        <h1 class="mt-2 text-4xl font-bold tracking-tight md:text-6xl">{{ house.name }}</h1>
+        <p class="mt-4 max-w-2xl text-slate-300">{{ house.description || 'A community on Live Discussions.' }}</p>
+        <div class="mt-4 flex flex-wrap gap-3 text-sm text-slate-400">
+          <span>{{ house.memberCount }} members</span>
+          <span>•</span>
+          <span>{{ house.roomCount }} rooms</span>
+          @if (facade.role()) {
+            <span>•</span>
+            <span class="capitalize text-violet-200">{{ facade.role() }}</span>
+          }
+        </div>
+      </div>
+
+      <form class="grid gap-2" [formGroup]="identityForm" (ngSubmit)="saveDisplayName()">
+        <label class="text-sm text-slate-300" for="house-display-name">Your display name</label>
+        <div class="flex gap-2">
+          <input
+            id="house-display-name"
+            class="min-w-56 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="displayName"
+            placeholder="Your name"
+          />
+          <button class="rounded-xl border border-slate-600 px-4 font-semibold" type="submit">Save</button>
+        </div>
+      </form>
+    </header>
+
+    @if (facade.error()) {
+      <div class="mb-6 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+        {{ facade.error() }}
+      </div>
+    }
+
+    @if (!facade.role()) {
+      <section class="mb-8 flex flex-col gap-4 rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-xl font-semibold">Join this House</h2>
+          <p class="mt-1 text-sm text-slate-400">Become a member and keep this community in your spaces.</p>
+        </div>
+        <button
+          class="rounded-xl bg-violet-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-40"
+          type="button"
+          (click)="joinHouse()"
+          [disabled]="facade.joining()"
+        >
+          {{ facade.joining() ? 'Joining…' : 'Join House' }}
+        </button>
+      </section>
+    }
+
+    <section class="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <section>
+        <div class="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">DISCUSSIONS</p>
+            <h2 class="mt-1 text-2xl font-semibold">Rooms in this House</h2>
+          </div>
+          <span class="text-sm text-slate-400">{{ house.rooms.length }} available</span>
+        </div>
+
+        @if (house.rooms.length) {
+          <div class="grid gap-4 md:grid-cols-2">
+            @for (room of house.rooms; track room.id) {
+              <article class="flex min-h-48 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+                <div>
+                  <div class="mb-4 flex items-center justify-between gap-3">
+                    <span class="rounded-full bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-200">LIVE</span>
+                    <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+                  </div>
+                  <h3 class="text-xl font-semibold">{{ room.title }}</h3>
+                </div>
+
+                <button
+                  class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950"
+                  type="button"
+                  (click)="joinRoom(room.id)"
+                >
+                  Join discussion
+                </button>
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+            <h3 class="text-xl font-semibold">No rooms yet</h3>
+            <p class="mt-2 text-slate-400">The House owner can start the first discussion.</p>
+          </div>
+        }
+      </section>
+
+      <aside>
+        @if (facade.role() === 'owner') {
+          <form class="rounded-3xl border border-sky-800/70 bg-sky-950/20 p-6" [formGroup]="roomForm" (ngSubmit)="createRoom()">
+            <p class="text-xs font-bold tracking-[0.2em] text-sky-300">HOUSE OWNER</p>
+            <h2 class="mt-2 text-xl font-semibold">Start a room here</h2>
+            <p class="mt-2 text-sm text-slate-400">The new discussion stays linked to {{ house.name }}.</p>
+
+            <label class="mt-6 grid gap-2 text-sm text-slate-300">
+              Room title
+              <input
+                class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+                formControlName="title"
+                placeholder="What should we talk about?"
+              />
+            </label>
+
+            <button
+              class="mt-5 w-full rounded-xl bg-sky-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+              type="submit"
+              [disabled]="facade.creatingRoom()"
+            >
+              {{ facade.creatingRoom() ? 'Creating…' : 'Create & enter room' }}
+            </button>
+          </form>
+        } @else {
+          <div class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ABOUT HOUSES</p>
+            <h2 class="mt-2 text-xl font-semibold">A place for recurring conversations</h2>
+            <p class="mt-3 text-sm leading-6 text-slate-400">
+              Houses keep a community together while individual rooms are the live discussions happening inside it.
+            </p>
+          </div>
+        }
+      </aside>
+    </section>
+  } @else {
+    <div class="rounded-3xl border border-red-900 bg-red-950/20 p-8 text-red-200">
+      {{ facade.error() || 'House not found.' }}
+    </div>
+  }
+</main>
