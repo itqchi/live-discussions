@@ -1,5 +1,5 @@
+import type { ModeratedParticipantRole } from '@live-discussions/contracts';
 import { IsIn, IsString, Length } from 'class-validator';
-import type { ParticipantRole } from '@live-discussions/contracts';
 
 export class UpdateParticipantRoleDto {
   @IsString()
@@ -10,6 +10,6 @@ export class UpdateParticipantRoleDto {
   @Length(1, 120)
   participantId!: string;
 
-  @IsIn(['owner', 'moderator', 'speaker', 'listener'])
-  role!: ParticipantRole;
+  @IsIn(['speaker', 'listener'])
+  role!: ModeratedParticipantRole;
 }
