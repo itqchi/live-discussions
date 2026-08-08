@@ -5,7 +5,7 @@ import { RoomMediaService } from './data-access/room-media.service';
 
 export const ROOMS_ROUTES: Routes = [
   {
-    path: '',
+    path: ':roomId',
     providers: [RoomApiService, RoomMediaService, RoomFacade],
     loadComponent: () =>
       import('./pages/room-page/room-page.component').then(
