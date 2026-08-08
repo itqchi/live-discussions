@@ -18,6 +18,7 @@ export interface RoomPresenceParticipant {
   role: ParticipantRole;
   raisedHand: boolean;
   onStage: boolean;
+  isSpeaking: boolean;
   isLocal: boolean;
 }
 
@@ -122,6 +123,7 @@ export class RoomMediaService {
     this.room.on(RoomEvent.ParticipantMetadataChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantNameChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantPermissionsChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.ActiveSpeakersChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.RoomMetadataChanged, (metadata) => this.syncRoomMetadata(metadata));
 
     this.room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -339,6 +341,7 @@ export class RoomMediaService {
       role: this.roleFromMetadata(participant.metadata),
       raisedHand: participant.attributes['raisedHand'] === 'true',
       onStage: participant.attributes['onStage'] !== 'false',
+      isSpeaking: participant.isSpeaking,
       isLocal,
     };
   }
