@@ -1,19 +1,63 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser, ParticipantRole } from '@live-discussions/contracts';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class RoomMembershipService {
   private readonly rolesByRoom = new Map<string, Map<string, ParticipantRole>>();
+  private readonly roomTitles = new Map<string, string>();
 
   constructor(private readonly database: DatabaseService) {}
 
+  async createRoom(roomId: string, title: string, owner: AuthenticatedUser): Promise<void> {
+    if (!this.database.configured) {
+      if (this.roomTitles.has(roomId)) {
+        throw new ConflictException('A room with this ID already exists.');
+      }
+
+      this.roomTitles.set(roomId, title);
+      this.rolesByRoom.set(roomId, new Map([[owner.userId, 'owner']]));
+      return;
+    }
+
+    await this.database.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO app_user (id, display_name)
+         VALUES ($1, $2)
+         ON CONFLICT (id) DO UPDATE
+         SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+        [owner.userId, owner.displayName],
+      );
+
+      const existing = await client.query('SELECT id FROM discussion_room WHERE id = $1', [roomId]);
+      if (existing.rows[0]) {
+        throw new ConflictException('A room with this ID already exists.');
+      }
+
+      await client.query('INSERT INTO discussion_room (id, title) VALUES ($1, $2)', [roomId, title]);
+      await client.query(
+        'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
+        [roomId, owner.userId, 'owner'],
+      );
+    });
+  }
+
   async resolveRole(roomId: string, user: AuthenticatedUser): Promise<ParticipantRole> {
     if (!this.database.configured) {
-      return this.resolveInMemory(roomId, user);
+      const roomRoles = this.rolesByRoom.get(roomId);
+      if (!roomRoles) throw new NotFoundException('Room not found. Create the room before joining.');
+
+      const existingRole = roomRoles.get(user.userId);
+      if (existingRole) return existingRole;
+
+      roomRoles.set(user.userId, 'listener');
+      return 'listener';
     }
 
     return this.database.transaction(async (client) => {
+      const room = await client.query('SELECT id FROM discussion_room WHERE id = $1', [roomId]);
+      if (!room.rows[0]) throw new NotFoundException('Room not found. Create the room before joining.');
+
       await client.query(
         `INSERT INTO app_user (id, display_name)
          VALUES ($1, $2)
@@ -22,53 +66,46 @@ export class RoomMembershipService {
         [user.userId, user.displayName],
       );
 
-      await client.query(
-        `INSERT INTO discussion_room (id, title)
-         VALUES ($1, $1)
-         ON CONFLICT (id) DO NOTHING`,
-        [roomId],
-      );
-
-      await client.query('SELECT id FROM discussion_room WHERE id = $1 FOR UPDATE', [roomId]);
-
       const existing = await client.query<{ role: ParticipantRole }>(
         'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
         [roomId, user.userId],
       );
 
-      if (existing.rows[0]) {
-        return existing.rows[0].role;
-      }
-
-      const memberCount = await client.query<{ count: string }>(
-        'SELECT COUNT(*)::text AS count FROM room_member WHERE room_id = $1',
-        [roomId],
-      );
-
-      const role: ParticipantRole = Number(memberCount.rows[0]?.count ?? 0) === 0 ? 'owner' : 'listener';
+      if (existing.rows[0]) return existing.rows[0].role;
 
       await client.query(
         'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
-        [roomId, user.userId, role],
+        [roomId, user.userId, 'listener'],
       );
 
-      return role;
+      return 'listener';
     });
   }
 
-  private resolveInMemory(roomId: string, user: AuthenticatedUser): ParticipantRole {
-    let roomRoles = this.rolesByRoom.get(roomId);
-
-    if (!roomRoles) {
-      roomRoles = new Map<string, ParticipantRole>();
-      this.rolesByRoom.set(roomId, roomRoles);
+  async getRole(roomId: string, userId: string): Promise<ParticipantRole | null> {
+    if (!this.database.configured) {
+      return this.rolesByRoom.get(roomId)?.get(userId) ?? null;
     }
 
-    const existingRole = roomRoles.get(user.userId);
-    if (existingRole) return existingRole;
+    const result = await this.database.query<{ role: ParticipantRole }>(
+      'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId],
+    );
+    return result.rows[0]?.role ?? null;
+  }
 
-    const role: ParticipantRole = roomRoles.size === 0 ? 'owner' : 'listener';
-    roomRoles.set(user.userId, role);
-    return role;
+  async setRole(roomId: string, userId: string, role: ParticipantRole): Promise<void> {
+    if (!this.database.configured) {
+      const roomRoles = this.rolesByRoom.get(roomId);
+      if (!roomRoles || !roomRoles.has(userId)) throw new NotFoundException('Participant is not a room member.');
+      roomRoles.set(userId, role);
+      return;
+    }
+
+    const result = await this.database.query(
+      'UPDATE room_member SET role = $3 WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId, role],
+    );
+    if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
   }
 }
