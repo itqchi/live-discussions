@@ -119,14 +119,8 @@ export class RoomsService {
     }
 
     const roomService = this.roomServiceClient();
-    const [room] = await roomService.listRooms([request.roomId]);
-    const metadata = this.parseRoomMetadata(room?.metadata);
-
     await roomService.removeParticipant(request.roomId, request.participantId);
-
-    if (metadata.featuredParticipantId === request.participantId) {
-      await roomService.updateRoomMetadata(request.roomId, JSON.stringify({} satisfies LiveRoomMetadata));
-    }
+    await this.clearFeaturedParticipantIfMatches(roomService, request.roomId, request.participantId);
   }
 
   async updateParticipantRole(
@@ -147,8 +141,9 @@ export class RoomsService {
 
     await this.memberships.setRole(request.roomId, request.participantId, request.role);
     const permissions = permissionsForRole(request.role);
+    const roomService = this.roomServiceClient();
 
-    const info = await this.roomServiceClient().updateParticipant(request.roomId, request.participantId, {
+    const info = await roomService.updateParticipant(request.roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
       attributes: { raisedHand: 'false' },
       permission: {
@@ -157,6 +152,10 @@ export class RoomsService {
         canPublishData: true,
       },
     });
+
+    if (request.role === 'listener') {
+      await this.clearFeaturedParticipantIfMatches(roomService, request.roomId, request.participantId);
+    }
 
     return {
       userId: info.identity,
@@ -174,6 +173,19 @@ export class RoomsService {
     }
 
     return role;
+  }
+
+  private async clearFeaturedParticipantIfMatches(
+    roomService: RoomServiceClient,
+    roomId: string,
+    participantId: string,
+  ): Promise<void> {
+    const [room] = await roomService.listRooms([roomId]);
+    const metadata = this.parseRoomMetadata(room?.metadata);
+
+    if (metadata.featuredParticipantId === participantId) {
+      await roomService.updateRoomMetadata(roomId, JSON.stringify({} satisfies LiveRoomMetadata));
+    }
   }
 
   private parseRoomMetadata(metadata: string | undefined): LiveRoomMetadata {
