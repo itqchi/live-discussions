@@ -3,7 +3,6 @@ import { Router } from '@angular/router';
 import type { HouseSummary, RoomSummary } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomNavigationService } from '../../../core/room-navigation.service';
-import { roomSlugFromName } from '../../../core/room-route.util';
 import { HouseApiService } from '../../houses/data-access/house-api.service';
 import { RoomApiService } from '../../rooms/data-access/room-api.service';
 
@@ -37,7 +36,9 @@ export class HomeFacade {
     }
   }
 
-  setDisplayName(displayName: string): void { this.identity.setDisplayName(displayName); }
+  setDisplayName(displayName: string): void {
+    this.identity.setDisplayName(displayName);
+  }
 
   houseForRoom(roomId: string): HouseSummary | null {
     return this.houses().find((house) => house.roomIds.includes(roomId)) ?? null;
@@ -50,6 +51,7 @@ export class HomeFacade {
       this.error.set('Room not found.');
       return;
     }
+
     this.navigation.rememberOrigin(room.slug, '/');
     await this.router.navigate(['/room', room.slug]);
   }
@@ -60,15 +62,11 @@ export class HomeFacade {
       if (!normalizedTitle) this.error.set('Enter a room title.');
       return;
     }
+
     this.creatingRoom.set(true);
     this.error.set(null);
     try {
-      const slug = roomSlugFromName(normalizedTitle);
-      const response = await this.roomsApi.createRoom(
-        { roomId: slug, title: normalizedTitle },
-        this.identity.userId,
-        this.displayName(),
-      );
+      const response = await this.roomsApi.createRoom({ title: normalizedTitle });
       this.navigation.rememberOrigin(response.room.slug, '/');
       await this.router.navigate(['/room', response.room.slug]);
     } catch (error) {
@@ -84,14 +82,14 @@ export class HomeFacade {
       if (!normalizedName) this.error.set('Enter a house name.');
       return;
     }
+
     this.creatingHouse.set(true);
     this.error.set(null);
     try {
-      const response = await this.housesApi.createHouse(
-        { name: normalizedName, description: description.trim() },
-        this.identity.userId,
-        this.displayName(),
-      );
+      const response = await this.housesApi.createHouse({
+        name: normalizedName,
+        description: description.trim(),
+      });
       await this.router.navigate(['/houses', response.house.id]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create the house.'));
@@ -104,14 +102,16 @@ export class HomeFacade {
     if (!this.requireDisplayName()) return;
     this.error.set(null);
     try {
-      await this.housesApi.joinHouse({ houseId }, this.identity.userId, this.displayName());
+      await this.housesApi.joinHouse({ houseId });
       await this.router.navigate(['/houses', houseId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the house.'));
     }
   }
 
-  openHouse(houseId: string): Promise<boolean> { return this.router.navigate(['/houses', houseId]); }
+  openHouse(houseId: string): Promise<boolean> {
+    return this.router.navigate(['/houses', houseId]);
+  }
 
   private requireDisplayName(): boolean {
     if (this.displayName().trim()) return true;
