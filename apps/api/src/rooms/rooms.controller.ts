@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import type {
   AuthenticatedUser,
   CreateRoomResponse,
@@ -7,7 +7,6 @@ import type {
   RoomSummary,
 } from '@live-discussions/contracts';
 import { DevUser } from '../auth/dev-user.decorator';
-import { CloseRoomDto } from './dto/close-room.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
@@ -42,12 +41,12 @@ export class RoomsController {
     return this.roomsService.createJoinToken(request, user);
   }
 
-  @Patch('close')
+  @Delete(':roomId')
   async closeRoom(
-    @Body() request: CloseRoomDto,
+    @Param('roomId') roomId: string,
     @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.closeRoom(request, user);
+    await this.roomsService.closeRoom({ roomId }, user);
   }
 
   @Patch('hand')
