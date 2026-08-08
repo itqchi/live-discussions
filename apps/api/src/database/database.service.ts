@@ -21,12 +21,15 @@ export class DatabaseService implements OnModuleDestroy {
       throw new Error(`Unsupported DATABASE_DRIVER: ${this.driver}`);
     }
 
-    const connectionString = this.config.get<string>('DATABASE_URL');
+    const connectionString = this.config.get<string>('DATABASE_URL')?.trim();
     if (!connectionString) {
       throw new Error('DATABASE_URL is required when DATABASE_DRIVER=postgres');
     }
 
-    this.pool = new Pool({ connectionString });
+    this.pool = new Pool({
+      connectionString,
+      application_name: 'live-discussions-api',
+    });
   }
 
   get configured(): boolean {
@@ -37,26 +40,24 @@ export class DatabaseService implements OnModuleDestroy {
     text: string,
     values: unknown[] = [],
   ): Promise<QueryResult<T>> {
-    if (!this.pool) {
-      throw new Error('PostgreSQL is not enabled');
-    }
-
-    return this.pool.query<T>(text, values);
+    const pool = this.requirePool();
+    return pool.query<T>(text, values);
   }
 
   async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    if (!this.pool) {
-      throw new Error('PostgreSQL is not enabled');
-    }
+    const client = await this.requirePool().connect();
 
-    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const result = await work(client);
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Preserve the business/database error that caused the transaction to fail.
+      }
       throw error;
     } finally {
       client.release();
@@ -65,5 +66,10 @@ export class DatabaseService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.pool?.end();
+  }
+
+  private requirePool(): Pool {
+    if (!this.pool) throw new Error('PostgreSQL is not enabled');
+    return this.pool;
   }
 }
