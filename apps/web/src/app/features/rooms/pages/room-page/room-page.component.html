@@ -95,35 +95,87 @@
         </div>
       }
 
-      <div class="relative grid min-h-80 flex-1 place-items-center overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 sm:min-h-[430px]">
-        @if (facade.mainStageTrack(); as mainTrack) {
-          <live-discussions-video-track [track]="mainTrack.track" />
-          <div class="absolute bottom-4 left-4 rounded-full bg-slate-950/80 px-4 py-2 text-sm backdrop-blur">
-            <strong>{{ mainTrack.participantName }}</strong>
-            <span class="ml-2 text-slate-400">
-              {{ mainTrack.source === 'screen_share' ? 'Screen sharing' : 'Camera' }}
-            </span>
+      @if (facade.screenShareTrack(); as screenShare) {
+        <section class="mb-4 overflow-hidden rounded-3xl border border-sky-800/70 bg-slate-950">
+          <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div>
+              <p class="text-xs font-bold tracking-[0.16em] text-sky-300">SCREEN SHARE</p>
+              <strong class="text-sm">{{ screenShare.participantName }}</strong>
+            </div>
+            <span class="text-xs text-slate-500">Live</span>
+          </div>
+          <div class="aspect-video">
+            <live-discussions-video-track [track]="screenShare.track" />
+          </div>
+        </section>
+      }
+
+      <section class="overflow-hidden rounded-3xl border border-violet-800/70 bg-slate-950">
+        <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+          <div>
+            <p class="text-xs font-bold tracking-[0.16em] text-violet-300">FEATURED SPOT</p>
+            <p class="mt-1 text-xs text-slate-500">Owner by default · owner/admin can change this</p>
+          </div>
+        </div>
+
+        @if (facade.featuredParticipant(); as featured) {
+          <div class="relative grid aspect-video min-h-72 place-items-center overflow-hidden bg-slate-950 sm:min-h-[390px]">
+            @if (facade.featuredCamera(); as camera) {
+              <live-discussions-video-track [track]="camera.track" />
+            } @else {
+              <div class="grid place-items-center gap-4 text-center">
+                <div class="grid size-32 place-items-center rounded-full border border-slate-600 bg-slate-800 text-4xl font-bold shadow-2xl">
+                  {{ initialsFor(featured.name) }}
+                </div>
+                <p class="text-sm text-slate-500">Camera off</p>
+              </div>
+            }
+
+            <div class="absolute bottom-4 left-4 rounded-full bg-slate-950/85 px-4 py-2 text-sm backdrop-blur">
+              <strong>{{ featured.name }}</strong>
+              <span class="ml-2 capitalize text-slate-400">{{ featured.role }}</span>
+              @if (featured.role === 'owner' && !facade.featuredParticipantId()) {
+                <span class="ml-2 text-violet-300">Default</span>
+              }
+            </div>
           </div>
         } @else {
-          <div class="max-w-sm px-6 text-center">
-            <div class="mx-auto grid size-20 place-items-center rounded-full border border-slate-700 bg-slate-900 text-2xl">◉</div>
-            <h3 class="mt-4 text-lg font-semibold">No camera or screen share yet</h3>
-            <p class="mt-2 text-sm leading-6 text-slate-400">Speakers can start their camera or share their screen using the controls below.</p>
+          <div class="grid min-h-72 place-items-center p-8 text-center">
+            <div>
+              <div class="mx-auto grid size-20 place-items-center rounded-full border border-slate-700 bg-slate-900 text-2xl">◉</div>
+              <h3 class="mt-4 text-lg font-semibold">Waiting for the owner</h3>
+              <p class="mt-2 text-sm text-slate-400">The room owner becomes the default featured participant when connected.</p>
+            </div>
           </div>
         }
-      </div>
+      </section>
 
-      @if (facade.mediaThumbnails().length) {
-        <div class="mt-4 flex gap-3 overflow-x-auto pb-2">
-          @for (tile of facade.mediaThumbnails(); track tile.id) {
-            <article class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 sm:w-40">
-              <live-discussions-video-track [track]="tile.track" />
-              <div class="absolute inset-x-0 bottom-0 truncate bg-slate-950/75 px-2 py-1.5 text-xs backdrop-blur">
-                {{ tile.participantName }} · {{ tile.source === 'screen_share' ? 'Screen' : 'Camera' }}
-              </div>
-            </article>
-          }
-        </div>
+      @if (facade.secondaryStageParticipants().length) {
+        <section class="mt-4">
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <p class="text-xs font-bold tracking-[0.16em] text-slate-400">ON STAGE</p>
+            <span class="text-xs text-slate-500">{{ facade.secondaryStageParticipants().length }}</span>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            @for (person of facade.secondaryStageParticipants(); track person.identity) {
+              <article class="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
+                <div class="relative grid aspect-video place-items-center overflow-hidden bg-slate-900">
+                  @if (facade.cameraFor(person.identity); as camera) {
+                    <live-discussions-video-track [track]="camera.track" />
+                  } @else {
+                    <div class="grid size-16 place-items-center rounded-full bg-slate-800 text-xl font-bold">
+                      {{ initialsFor(person.name) }}
+                    </div>
+                  }
+                </div>
+                <div class="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <strong class="truncate text-sm">{{ person.name }}</strong>
+                  <span class="text-[11px] capitalize text-slate-500">{{ person.role }}</span>
+                </div>
+              </article>
+            }
+          </div>
+        </section>
       }
 
       <div class="mt-5 flex flex-wrap justify-center gap-2 border-t border-slate-800 pt-5">
@@ -180,6 +232,7 @@
                     <strong class="truncate text-sm">{{ person.name }}</strong>
                     @if (person.isLocal) { <span class="text-[10px] text-slate-500">You</span> }
                     @if (person.raisedHand) { <span class="text-xs" title="Hand raised">✋</span> }
+                    @if (facade.isFeatured(person.identity)) { <span class="text-[10px] text-violet-300">Featured</span> }
                   </div>
                   <p class="text-xs capitalize text-slate-500">{{ person.role }}</p>
                 </div>
@@ -187,15 +240,20 @@
                 @if (facade.canModerate()) {
                   <details class="relative shrink-0">
                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
-                    <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
-                      <button
-                        class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600"
-                        type="button"
-                        (click)="facade.featureParticipant(person.identity)"
-                        [disabled]="!facade.hasCamera(person.identity)"
-                      >
-                        {{ facade.hasCamera(person.identity) ? 'Feature camera' : 'Camera is off' }}
-                      </button>
+                    <div class="absolute right-0 top-9 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                      @if (facade.isFeatured(person.identity)) {
+                        @if (person.role !== 'owner' || facade.featuredParticipantId()) {
+                          <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">
+                            Return owner to featured spot
+                          </button>
+                        } @else {
+                          <div class="px-3 py-2 text-sm text-slate-500">Owner is featured by default</div>
+                        }
+                      } @else {
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.featureParticipant(person.identity)">
+                          Feature on stage
+                        </button>
+                      }
 
                       @if (!person.isLocal && person.role === 'speaker') {
                         <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.moveToAudience(person.identity)">Move to audience</button>
@@ -228,16 +286,29 @@
                     <strong class="truncate text-sm">{{ person.name }}</strong>
                     @if (person.isLocal) { <span class="text-[10px] text-slate-500">You</span> }
                     @if (person.raisedHand) { <span class="text-xs" title="Hand raised">✋</span> }
+                    @if (facade.isFeatured(person.identity)) { <span class="text-[10px] text-violet-300">Featured</span> }
                   </div>
                   <p class="text-xs text-slate-500">Listener</p>
                 </div>
 
-                @if (facade.canModerate() && !person.isLocal) {
+                @if (facade.canModerate()) {
                   <details class="relative shrink-0">
                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
-                    <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
-                      <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(person.identity)">Invite to speak</button>
-                      <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
+                    <div class="absolute right-0 top-9 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                      @if (facade.isFeatured(person.identity)) {
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">
+                          Return owner to featured spot
+                        </button>
+                      } @else {
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.featureParticipant(person.identity)">
+                          Feature on stage
+                        </button>
+                      }
+
+                      @if (!person.isLocal) {
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(person.identity)">Invite to speak</button>
+                        <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
+                      }
                     </div>
                   </details>
                 }
