@@ -1,14 +1,23 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  HostListener,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
+import { DismissibleDetailsDirective } from '../../../../shared/ui/dismissible-details.directive';
 import { RoomFacade } from '../../data-access/room.facade';
 import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
 @Component({
   selector: 'live-discussions-room-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, VideoTrackComponent],
+  imports: [ReactiveFormsModule, RouterLink, VideoTrackComponent, DismissibleDetailsDirective],
   templateUrl: './room-page.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -19,8 +28,10 @@ export class RoomPageComponent implements OnInit {
   private readonly formBuilder = inject(FormBuilder);
 
   readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
+  readonly roomPath = `/rooms/${this.roomId}`;
   readonly displayName = this.identity.displayName;
   readonly initials = computed(() => this.initialsFor(this.displayName()));
+  readonly settingsOpen = signal(false);
 
   readonly commentForm = this.formBuilder.nonNullable.group({
     comment: ['', [Validators.required, Validators.maxLength(1000)]],
@@ -28,6 +39,15 @@ export class RoomPageComponent implements OnInit {
 
   ngOnInit(): void {
     if (this.roomId && this.displayName()) this.join();
+  }
+
+  @HostListener('document:keydown.escape')
+  closeSettings(): void {
+    this.settingsOpen.set(false);
+  }
+
+  openSettings(): void {
+    this.settingsOpen.set(true);
   }
 
   join(): void {
