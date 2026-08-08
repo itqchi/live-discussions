@@ -7,19 +7,22 @@ const candidates = [
   'dist/apps/api/main.js',
 ];
 
+let entryPoint;
+
 for (const candidate of candidates) {
   const path = resolve(candidate);
 
   try {
     await access(path);
-    await import(pathToFileURL(path).href);
-    process.exitCode = 0;
+    entryPoint = path;
     break;
-  } catch (error) {
-    if (candidate === candidates.at(-1)) {
-      throw new Error(`Unable to find the compiled API entry point. Checked: ${candidates.join(', ')}`, {
-        cause: error,
-      });
-    }
+  } catch {
+    // Try the next known Nx TypeScript output layout.
   }
 }
+
+if (!entryPoint) {
+  throw new Error(`Unable to find the compiled API entry point. Checked: ${candidates.join(', ')}`);
+}
+
+await import(pathToFileURL(entryPoint).href);
