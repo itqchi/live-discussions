@@ -94,6 +94,20 @@ export class HouseApiService {
     );
   }
 
+  closeRoom(
+    houseId: string,
+    roomId: string,
+    devUserId: string,
+    displayName: string,
+  ): Promise<void> {
+    return this.toPromise(
+      this.http.patch<void>(`${this.apiBaseUrl}/houses/${houseId}/rooms/${roomId}/close`, {}, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to close the room.',
+    );
+  }
+
   private devHeaders(devUserId: string, displayName: string): HttpHeaders {
     return new HttpHeaders({
       'x-dev-user-id': devUserId,
