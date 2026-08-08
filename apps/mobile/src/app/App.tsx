@@ -18,11 +18,7 @@ import {
   type TrackReferenceOrPlaceholder,
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
-import type {
-  JoinRoomRequest,
-  JoinRoomResponse,
-  ParticipantRole,
-} from '@live-discussions/contracts';
+import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 
 const API_URL = 'http://localhost:3000';
 
@@ -41,7 +37,9 @@ function RoomStage(): React.JSX.Element {
           ) : (
             <View style={[styles.video, styles.videoPlaceholder]} />
           )}
-          <Text style={styles.participantName}>{item.participant.name || item.participant.identity}</Text>
+          <Text style={styles.participantName}>
+            {item.participant.name || item.participant.identity}
+          </Text>
         </View>
       )}
     />
@@ -51,7 +49,9 @@ function RoomStage(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   const [roomId, setRoomId] = useState('general');
   const [displayName, setDisplayName] = useState('Mobile user');
-  const [role, setRole] = useState<ParticipantRole>('speaker');
+  const [userId] = useState(
+    () => `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  );
   const [session, setSession] = useState<JoinRoomResponse | null>(null);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,23 +64,28 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const request = useMemo<JoinRoomRequest>(
-    () => ({
-      roomId,
-      displayName,
-      role,
-      userId: `mobile-${displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'user'}`,
-    }),
-    [displayName, role, roomId],
+    () => ({ roomId: roomId.trim() }),
+    [roomId],
   );
 
   async function join(): Promise<void> {
+    const normalizedDisplayName = displayName.trim();
+    if (!request.roomId || !normalizedDisplayName) {
+      setError('Room and display name are required.');
+      return;
+    }
+
     setJoining(true);
     setError(null);
 
     try {
       const response = await fetch(`${API_URL}/rooms/join`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-dev-user-id': userId,
+          'x-dev-display-name': normalizedDisplayName,
+        },
         body: JSON.stringify(request),
       });
 
@@ -110,7 +115,8 @@ export default function App(): React.JSX.Element {
           <View style={styles.roomHeader}>
             <View>
               <Text style={styles.eyebrow}>LIVE ROOM</Text>
-              <Text style={styles.title}>{roomId}</Text>
+              <Text style={styles.title}>{session.roomSlug}</Text>
+              <Text style={styles.role}>{session.participant.role}</Text>
             </View>
             <Button title="Leave" onPress={() => setSession(null)} />
           </View>
@@ -126,20 +132,25 @@ export default function App(): React.JSX.Element {
         <Text style={styles.eyebrow}>LIVE DISCUSSIONS</Text>
         <Text style={styles.title}>Join from your phone</Text>
 
-        <TextInput style={styles.input} value={roomId} onChangeText={setRoomId} placeholder="Room ID" />
-        <TextInput style={styles.input} value={displayName} onChangeText={setDisplayName} placeholder="Display name" />
+        <TextInput
+          style={styles.input}
+          value={roomId}
+          onChangeText={setRoomId}
+          placeholder="Room name"
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={styles.input}
+          value={displayName}
+          onChangeText={setDisplayName}
+          placeholder="Display name"
+        />
 
-        <View style={styles.roles}>
-          {(['listener', 'speaker', 'moderator', 'owner'] as ParticipantRole[]).map((candidate) => (
-            <Button
-              key={candidate}
-              title={candidate === role ? `✓ ${candidate}` : candidate}
-              onPress={() => setRole(candidate)}
-            />
-          ))}
-        </View>
-
-        {joining ? <ActivityIndicator /> : <Button title="Join discussion" onPress={() => void join()} />}
+        {joining ? (
+          <ActivityIndicator />
+        ) : (
+          <Button title="Join discussion" onPress={() => void join()} />
+        )}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     </SafeAreaView>
@@ -151,10 +162,15 @@ const styles = StyleSheet.create({
   joinCard: { flex: 1, justifyContent: 'center', padding: 24, gap: 14 },
   eyebrow: { color: '#94a3b8', fontSize: 12, fontWeight: '700', letterSpacing: 1.4 },
   title: { color: 'white', fontSize: 28, fontWeight: '700', marginTop: 4 },
+  role: { color: '#a5b4fc', marginTop: 4, textTransform: 'capitalize' },
   input: { backgroundColor: 'white', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  roles: { gap: 8 },
   error: { color: '#fca5a5' },
-  roomHeader: { padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  roomHeader: {
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   trackList: { padding: 16, gap: 16 },
   participantCard: { backgroundColor: '#1e293b', borderRadius: 16, overflow: 'hidden' },
   video: { height: 260, width: '100%' },
