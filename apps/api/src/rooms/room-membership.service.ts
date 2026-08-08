@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser, ParticipantRole, RoomSummary } from '@live-discussions/contracts';
 import { DatabaseService } from '../database/database.service';
 
@@ -6,6 +6,7 @@ import { DatabaseService } from '../database/database.service';
 export class RoomMembershipService {
   private readonly rolesByRoom = new Map<string, Map<string, ParticipantRole>>();
   private readonly roomTitles = new Map<string, string>();
+  private readonly roomLiveState = new Map<string, boolean>();
 
   constructor(private readonly database: DatabaseService) {}
 
@@ -15,7 +16,7 @@ export class RoomMembershipService {
         .map(([id, title]) => ({
           id,
           title,
-          isLive: true,
+          isLive: this.roomLiveState.get(id) ?? true,
           memberCount: this.rolesByRoom.get(id)?.size ?? 0,
         }))
         .sort((left, right) => left.title.localeCompare(right.title));
@@ -24,19 +25,20 @@ export class RoomMembershipService {
     const result = await this.database.query<{
       id: string;
       title: string;
+      is_live: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.title, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.title, room.is_live, COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
-       GROUP BY room.id, room.title
+       GROUP BY room.id, room.title, room.is_live
        ORDER BY room.title ASC`,
     );
 
     return result.rows.map((room) => ({
       id: room.id,
       title: room.title,
-      isLive: true,
+      isLive: room.is_live,
       memberCount: Number(room.member_count),
     }));
   }
@@ -49,7 +51,7 @@ export class RoomMembershipService {
       return {
         id: roomId,
         title,
-        isLive: true,
+        isLive: this.roomLiveState.get(roomId) ?? true,
         memberCount: this.rolesByRoom.get(roomId)?.size ?? 0,
       };
     }
@@ -57,13 +59,14 @@ export class RoomMembershipService {
     const result = await this.database.query<{
       id: string;
       title: string;
+      is_live: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.title, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.title, room.is_live, COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
        WHERE room.id = $1
-       GROUP BY room.id, room.title`,
+       GROUP BY room.id, room.title, room.is_live`,
       [roomId],
     );
 
@@ -73,7 +76,7 @@ export class RoomMembershipService {
     return {
       id: room.id,
       title: room.title,
-      isLive: true,
+      isLive: room.is_live,
       memberCount: Number(room.member_count),
     };
   }
@@ -81,10 +84,11 @@ export class RoomMembershipService {
   async createRoom(roomId: string, title: string, owner: AuthenticatedUser): Promise<void> {
     if (!this.database.configured) {
       if (this.roomTitles.has(roomId)) {
-        throw new ConflictException('A room with this ID already exists.');
+        throw new ConflictException('A room with this name already exists.');
       }
 
       this.roomTitles.set(roomId, title);
+      this.roomLiveState.set(roomId, true);
       this.rolesByRoom.set(roomId, new Map([[owner.userId, 'owner']]));
       return;
     }
@@ -100,10 +104,10 @@ export class RoomMembershipService {
 
       const existing = await client.query('SELECT id FROM discussion_room WHERE id = $1', [roomId]);
       if (existing.rows[0]) {
-        throw new ConflictException('A room with this ID already exists.');
+        throw new ConflictException('A room with this name already exists.');
       }
 
-      await client.query('INSERT INTO discussion_room (id, title) VALUES ($1, $2)', [roomId, title]);
+      await client.query('INSERT INTO discussion_room (id, title, is_live) VALUES ($1, $2, TRUE)', [roomId, title]);
       await client.query(
         'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
         [roomId, owner.userId, 'owner'],
@@ -115,6 +119,7 @@ export class RoomMembershipService {
     if (!this.database.configured) {
       const roomRoles = this.rolesByRoom.get(roomId);
       if (!roomRoles) throw new NotFoundException('Room not found. Create the room before joining.');
+      if (!(this.roomLiveState.get(roomId) ?? true)) throw new GoneException('This room is closed.');
 
       const existingRole = roomRoles.get(user.userId);
       if (existingRole) return existingRole;
@@ -124,8 +129,12 @@ export class RoomMembershipService {
     }
 
     return this.database.transaction(async (client) => {
-      const room = await client.query('SELECT id FROM discussion_room WHERE id = $1', [roomId]);
+      const room = await client.query<{ is_live: boolean }>(
+        'SELECT is_live FROM discussion_room WHERE id = $1',
+        [roomId],
+      );
       if (!room.rows[0]) throw new NotFoundException('Room not found. Create the room before joining.');
+      if (!room.rows[0].is_live) throw new GoneException('This room is closed.');
 
       await client.query(
         `INSERT INTO app_user (id, display_name)
@@ -149,6 +158,20 @@ export class RoomMembershipService {
 
       return 'listener';
     });
+  }
+
+  async closeRoom(roomId: string): Promise<void> {
+    if (!this.database.configured) {
+      if (!this.roomTitles.has(roomId)) throw new NotFoundException('Room not found.');
+      this.roomLiveState.set(roomId, false);
+      return;
+    }
+
+    const result = await this.database.query(
+      'UPDATE discussion_room SET is_live = FALSE WHERE id = $1',
+      [roomId],
+    );
+    if (result.rowCount === 0) throw new NotFoundException('Room not found.');
   }
 
   async getRole(roomId: string, userId: string): Promise<ParticipantRole | null> {
