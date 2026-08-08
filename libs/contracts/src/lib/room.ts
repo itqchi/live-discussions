@@ -1,4 +1,5 @@
 export type ParticipantRole = 'owner' | 'moderator' | 'speaker' | 'listener';
+export type ModeratedParticipantRole = Extract<ParticipantRole, 'speaker' | 'listener'>;
 
 export interface ParticipantPermissions {
   canPublishAudio: boolean;
@@ -17,8 +18,8 @@ export interface RoomParticipant {
   displayName: string;
   role: ParticipantRole;
   permissions: ParticipantPermissions;
-  raisedHand?: boolean;
-  onStage?: boolean;
+  raisedHand: boolean;
+  onStage: boolean;
 }
 
 export interface DiscussionRoom {
@@ -38,8 +39,7 @@ export interface RoomSummary {
 }
 
 export interface CreateRoomRequest {
-  /** Route slug derived from the room name. The server generates the room's immutable unique id. */
-  roomId: string;
+  /** Human-readable title. The server owns both slug generation and the immutable room id. */
   title: string;
 }
 
@@ -49,7 +49,7 @@ export interface CreateRoomResponse {
 }
 
 export interface JoinRoomRequest {
-  /** Public route slug, not the internal room id. */
+  /** Public route slug, not the immutable room id. */
   roomId: string;
 }
 
@@ -79,7 +79,7 @@ export interface SetStagePresenceRequest {
 export interface UpdateParticipantRoleRequest {
   roomId: string;
   participantId: string;
-  role: ParticipantRole;
+  role: ModeratedParticipantRole;
 }
 
 export interface SetFeaturedParticipantRequest {
