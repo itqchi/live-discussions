@@ -47,7 +47,6 @@ export interface GetHouseResponse {
 }
 
 export interface CreateHouseRoomRequest {
-  roomId: string;
   title: string;
 }
 
