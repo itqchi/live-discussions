@@ -74,3 +74,7 @@ export interface RemoveParticipantRequest {
   roomId: string;
   participantId: string;
 }
+
+export interface CloseRoomRequest {
+  roomId: string;
+}
