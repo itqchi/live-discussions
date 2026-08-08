@@ -20,7 +20,7 @@ export class RoomsService {
     const invalidFields = this.getInvalidLiveKitFields(livekitUrl, apiKey, apiSecret);
     if (invalidFields.length > 0) {
       throw new ServiceUnavailableException(
-        `LiveKit configuration is invalid for: ${invalidFields.join(', ')}. Update those values in .env with credentials from your LiveKit project and restart the API.`,
+        `LiveKit configuration is invalid: ${invalidFields.join(', ')}. Update .env with credentials from your LiveKit project and restart the API.`,
       );
     }
 
@@ -61,16 +61,22 @@ export class RoomsService {
   ): string[] {
     const invalidFields: string[] = [];
 
-    if (!livekitUrl || livekitUrl.includes('your-project.livekit.cloud')) {
-      invalidFields.push('LIVEKIT_URL');
+    if (!livekitUrl) {
+      invalidFields.push('LIVEKIT_URL (missing)');
+    } else if (livekitUrl.includes('your-project.livekit.cloud')) {
+      invalidFields.push('LIVEKIT_URL (placeholder)');
     }
 
-    if (!apiKey || apiKey === 'replace-me') {
-      invalidFields.push('LIVEKIT_API_KEY');
+    if (!apiKey) {
+      invalidFields.push('LIVEKIT_API_KEY (missing)');
+    } else if (apiKey === 'replace-me') {
+      invalidFields.push('LIVEKIT_API_KEY (placeholder)');
     }
 
-    if (!apiSecret || apiSecret === 'replace-me') {
-      invalidFields.push('LIVEKIT_API_SECRET');
+    if (!apiSecret) {
+      invalidFields.push('LIVEKIT_API_SECRET (missing)');
+    } else if (apiSecret === 'replace-me') {
+      invalidFields.push('LIVEKIT_API_SECRET (placeholder)');
     }
 
     return invalidFields;
