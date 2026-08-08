@@ -8,6 +8,7 @@ import type {
   JoinRoomResponse,
   RaiseHandRequest,
   RoomParticipant,
+  RoomSummary,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
@@ -20,6 +21,10 @@ export class RoomsService {
     private readonly memberships: RoomMembershipService,
     private readonly config: ConfigService,
   ) {}
+
+  listRooms(): Promise<RoomSummary[]> {
+    return this.memberships.listRooms();
+  }
 
   async createRoom(request: CreateRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
     await this.memberships.createRoom(request.roomId, request.title, user);
