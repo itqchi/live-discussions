@@ -18,10 +18,10 @@
     </span>
   </header>
 
-  <section class="grid gap-5 md:grid-cols-[minmax(260px,340px)_1fr]">
+  <section class="grid gap-5 lg:grid-cols-[minmax(260px,340px)_1fr]">
     <aside class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
       <form class="grid gap-4" [formGroup]="joinForm" (ngSubmit)="join()">
-        <h2 class="text-xl font-semibold">Join a room</h2>
+        <h2 class="text-xl font-semibold">Room</h2>
 
         <label class="grid gap-2 text-sm text-slate-300">
           Room ID
@@ -45,15 +45,26 @@
           <p class="text-sm text-red-200">Enter a display name of at most 80 characters.</p>
         }
 
-        <p class="text-xs text-slate-400">Your room role is assigned by the server.</p>
+        <p class="text-xs text-slate-400">Room ownership and participant roles are assigned by the server.</p>
 
-        <button
-          class="rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-          type="submit"
-          [disabled]="facade.joining() || facade.connected()"
-        >
-          {{ facade.joining() ? 'Joining…' : 'Join discussion' }}
-        </button>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+          <button
+            class="rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+            type="submit"
+            [disabled]="facade.joining() || facade.creating() || facade.connected()"
+          >
+            {{ facade.joining() ? 'Joining…' : 'Join room' }}
+          </button>
+
+          <button
+            class="rounded-xl border border-slate-500 px-4 py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            (click)="createAndJoin()"
+            [disabled]="facade.joining() || facade.creating() || facade.connected()"
+          >
+            {{ facade.creating() ? 'Creating…' : 'Create & join' }}
+          </button>
+        </div>
 
         @if (facade.error()) {
           <p class="text-sm text-red-200">{{ facade.error() }}</p>
@@ -61,95 +72,143 @@
       </form>
     </aside>
 
-    <section class="flex min-h-[520px] flex-col gap-5 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
-      <div class="flex items-center justify-between gap-5">
-        <div>
-          <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
-          <h2 class="mt-1 text-xl font-semibold">{{ joinForm.controls.roomId.value || 'Choose a room' }}</h2>
+    <section class="grid min-h-[520px] gap-5 xl:grid-cols-[1fr_300px]">
+      <section class="flex min-h-[520px] flex-col gap-5 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
+        <div class="flex items-center justify-between gap-5">
+          <div>
+            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
+            <h2 class="mt-1 text-xl font-semibold">{{ joinForm.controls.roomId.value || 'Choose a room' }}</h2>
+          </div>
+          <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
         </div>
-        <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
-      </div>
 
-      @if (facade.audioPlaybackBlocked()) {
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-700/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
-          <span>Your browser blocked room audio until you interact with the page.</span>
+        @if (facade.audioPlaybackBlocked()) {
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-700/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+            <span>Your browser blocked room audio until you interact with the page.</span>
+            <button class="rounded-xl border border-amber-500/70 px-3 py-2 font-semibold" type="button" (click)="facade.resumeAudio()">
+              Enable room audio
+            </button>
+          </div>
+        }
+
+        @if (facade.videoTracks().length) {
+          <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            @for (tile of facade.videoTracks(); track tile.id) {
+              <article class="relative aspect-video min-h-44 overflow-hidden rounded-2xl bg-slate-900">
+                <live-discussions-video-track [track]="tile.track" />
+                <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs backdrop-blur">
+                  <strong>{{ tile.participantName }}</strong>
+                  @if (tile.isLocal) { <span class="text-slate-400">You</span> }
+                </div>
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="grid min-h-72 flex-1 place-content-center place-items-center gap-3 text-center">
+            <div class="grid size-28 place-items-center rounded-full border border-slate-500 bg-slate-700 text-3xl font-bold">
+              {{ initials() }}
+            </div>
+            <strong>{{ displayName() || 'You' }}</strong>
+            <small class="text-slate-400">{{ facade.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
+          </div>
+        }
+
+        <div class="flex flex-wrap justify-center gap-2">
           <button
-            class="rounded-xl border border-amber-500/70 px-3 py-2 font-semibold"
+            class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
             type="button"
-            (click)="facade.resumeAudio()"
+            (click)="facade.toggleMicrophone()"
+            [disabled]="!facade.connected() || !facade.canPublishAudio()"
           >
-            Enable room audio
+            {{ facade.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
+          </button>
+
+          <button
+            class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            (click)="facade.toggleCamera()"
+            [disabled]="!facade.connected() || !facade.canPublishVideo()"
+          >
+            {{ facade.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
+          </button>
+
+          <button
+            class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            (click)="facade.toggleScreenShare()"
+            [disabled]="!facade.connected() || !facade.canShareScreen()"
+          >
+            {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
+          </button>
+
+          @if (facade.connected() && facade.currentRole() === 'listener') {
+            <button
+              class="rounded-xl border border-amber-700 px-4 py-3 text-amber-100"
+              type="button"
+              (click)="facade.toggleRaisedHand()"
+            >
+              {{ facade.raisedHand() ? 'Lower hand' : 'Raise hand' }}
+            </button>
+          }
+
+          <button
+            class="rounded-xl border border-red-900 px-4 py-3 text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            (click)="facade.leave()"
+            [disabled]="!facade.connected()"
+          >
+            Leave
           </button>
         </div>
-      }
+      </section>
 
-      @if (facade.videoTracks().length) {
-        <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          @for (tile of facade.videoTracks(); track tile.id) {
-            <article class="relative aspect-video min-h-44 overflow-hidden rounded-2xl bg-slate-900">
-              <live-discussions-video-track [track]="tile.track" />
-              <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs backdrop-blur">
-                <strong>{{ tile.participantName }}</strong>
-                @if (tile.isLocal) {
-                  <span class="text-slate-400">You</span>
-                }
+      <aside class="rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">PEOPLE</p>
+            <h2 class="mt-1 text-lg font-semibold">{{ facade.participants().length }} in room</h2>
+          </div>
+        </div>
+
+        <div class="grid gap-3">
+          @for (person of facade.participants(); track person.identity) {
+            <article class="rounded-2xl border border-slate-700 bg-slate-950/50 p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <strong class="truncate">{{ person.name }}</strong>
+                    @if (person.isLocal) { <span class="text-xs text-slate-400">You</span> }
+                    @if (person.raisedHand) { <span title="Hand raised">✋</span> }
+                  </div>
+                  <p class="mt-1 text-xs capitalize text-slate-400">{{ person.role }}</p>
+                </div>
               </div>
+
+              @if (facade.canModerate() && !person.isLocal && person.role === 'listener') {
+                <button
+                  class="mt-3 w-full rounded-xl border border-emerald-700 px-3 py-2 text-sm text-emerald-100"
+                  type="button"
+                  (click)="facade.promoteToSpeaker(person.identity)"
+                >
+                  Invite to speak
+                </button>
+              }
+
+              @if (facade.canModerate() && !person.isLocal && person.role === 'speaker') {
+                <button
+                  class="mt-3 w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-slate-200"
+                  type="button"
+                  (click)="facade.moveToAudience(person.identity)"
+                >
+                  Move to audience
+                </button>
+              }
             </article>
+          } @empty {
+            <p class="text-sm text-slate-400">Join the room to see participants.</p>
           }
         </div>
-      } @else {
-        <div class="grid min-h-72 flex-1 place-content-center place-items-center gap-3 text-center">
-          <div class="grid size-28 place-items-center rounded-full border border-slate-500 bg-slate-700 text-3xl font-bold">
-            {{ initials() }}
-          </div>
-          <strong>{{ displayName() || 'You' }}</strong>
-          <small class="text-slate-400">
-            {{ facade.connected() ? 'You are in the room' : 'Join to start listening' }}
-          </small>
-        </div>
-      }
-
-      <div class="flex flex-wrap justify-center gap-2">
-        <button
-          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          (click)="facade.toggleMicrophone()"
-          [disabled]="!facade.connected() || !facade.canPublishAudio()"
-        >
-          {{ facade.microphoneEnabled() ? 'Mute mic' : 'Enable mic' }}
-        </button>
-
-        <button
-          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          (click)="facade.toggleCamera()"
-          [disabled]="!facade.connected() || !facade.canPublishVideo()"
-        >
-          {{ facade.cameraEnabled() ? 'Stop camera' : 'Start camera' }}
-        </button>
-
-        <button
-          class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          (click)="facade.toggleScreenShare()"
-          [disabled]="!facade.connected() || !facade.canShareScreen()"
-        >
-          {{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}
-        </button>
-
-        <button
-          class="rounded-xl border border-red-900 px-4 py-3 text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          (click)="facade.leave()"
-          [disabled]="!facade.connected()"
-        >
-          Leave
-        </button>
-      </div>
-
-      <p class="text-center text-xs text-slate-400">
-        Publishing capabilities come from the server-issued LiveKit token. Development identity will be replaced by real authentication.
-      </p>
+      </aside>
     </section>
   </section>
 </main>
