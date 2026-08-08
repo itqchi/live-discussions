@@ -1,72 +1,70 @@
 import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser, ParticipantRole, RoomSummary } from '@live-discussions/contracts';
+import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
+
+interface MemoryRoom {
+  id: string;
+  slug: string;
+  title: string;
+  roles: Map<string, ParticipantRole>;
+}
 
 @Injectable()
 export class RoomMembershipService {
-  private readonly rolesByRoom = new Map<string, Map<string, ParticipantRole>>();
-  private readonly roomTitles = new Map<string, string>();
-  private readonly roomLiveState = new Map<string, boolean>();
+  private readonly roomsById = new Map<string, MemoryRoom>();
+  private readonly roomIdBySlug = new Map<string, string>();
 
   constructor(private readonly database: DatabaseService) {}
 
   async listRooms(): Promise<RoomSummary[]> {
     if (!this.database.configured) {
-      return [...this.roomTitles.entries()]
-        .map(([id, title]) => ({
-          id,
-          title,
-          isLive: this.roomLiveState.get(id) ?? true,
-          memberCount: this.rolesByRoom.get(id)?.size ?? 0,
-        }))
+      return [...this.roomsById.values()]
+        .map((room) => this.toMemorySummary(room))
         .sort((left, right) => left.title.localeCompare(right.title));
     }
 
     const result = await this.database.query<{
       id: string;
+      slug: string;
       title: string;
-      is_live: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.title, room.is_live, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.slug, room.title, COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
-       GROUP BY room.id, room.title, room.is_live
+       GROUP BY room.id, room.slug, room.title
        ORDER BY room.title ASC`,
     );
 
     return result.rows.map((room) => ({
       id: room.id,
+      slug: room.slug,
       title: room.title,
-      isLive: room.is_live,
+      isLive: true,
       memberCount: Number(room.member_count),
     }));
   }
 
-  async getRoomSummary(roomId: string): Promise<RoomSummary> {
-    if (!this.database.configured) {
-      const title = this.roomTitles.get(roomId);
-      if (!title) throw new NotFoundException('Room not found.');
+  async getRoomSummary(identifier: string): Promise<RoomSummary> {
+    const roomId = await this.resolveRoomId(identifier);
 
-      return {
-        id: roomId,
-        title,
-        isLive: this.roomLiveState.get(roomId) ?? true,
-        memberCount: this.rolesByRoom.get(roomId)?.size ?? 0,
-      };
+    if (!this.database.configured) {
+      const room = this.getMemoryRoom(roomId);
+      return this.toMemorySummary(room);
     }
 
     const result = await this.database.query<{
       id: string;
+      slug: string;
       title: string;
-      is_live: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.title, room.is_live, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.slug, room.title, COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
        WHERE room.id = $1
-       GROUP BY room.id, room.title, room.is_live`,
+       GROUP BY room.id, room.slug, room.title`,
       [roomId],
     );
 
@@ -75,22 +73,30 @@ export class RoomMembershipService {
 
     return {
       id: room.id,
+      slug: room.slug,
       title: room.title,
-      isLive: room.is_live,
+      isLive: true,
       memberCount: Number(room.member_count),
     };
   }
 
-  async createRoom(roomId: string, title: string, owner: AuthenticatedUser): Promise<void> {
+  async createRoom(slug: string, title: string, owner: AuthenticatedUser): Promise<RoomSummary> {
+    const id = randomUUID();
+
     if (!this.database.configured) {
-      if (this.roomTitles.has(roomId)) {
+      if (this.roomIdBySlug.has(slug)) {
         throw new ConflictException('A room with this name already exists.');
       }
 
-      this.roomTitles.set(roomId, title);
-      this.roomLiveState.set(roomId, true);
-      this.rolesByRoom.set(roomId, new Map([[owner.userId, 'owner']]));
-      return;
+      const room: MemoryRoom = {
+        id,
+        slug,
+        title,
+        roles: new Map([[owner.userId, 'owner']]),
+      };
+      this.roomsById.set(id, room);
+      this.roomIdBySlug.set(slug, id);
+      return this.toMemorySummary(room);
     }
 
     await this.database.transaction(async (client) => {
@@ -102,40 +108,50 @@ export class RoomMembershipService {
         [owner.userId, owner.displayName],
       );
 
-      const existing = await client.query('SELECT id FROM discussion_room WHERE id = $1', [roomId]);
-      if (existing.rows[0]) {
-        throw new ConflictException('A room with this name already exists.');
-      }
+      const existing = await client.query('SELECT id FROM discussion_room WHERE slug = $1', [slug]);
+      if (existing.rows[0]) throw new ConflictException('A room with this name already exists.');
 
-      await client.query('INSERT INTO discussion_room (id, title, is_live) VALUES ($1, $2, TRUE)', [roomId, title]);
+      await client.query(
+        'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
+        [id, slug, title],
+      );
       await client.query(
         'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
-        [roomId, owner.userId, 'owner'],
+        [id, owner.userId, 'owner'],
       );
     });
+
+    return { id, slug, title, isLive: true, memberCount: 1 };
   }
 
-  async resolveRole(roomId: string, user: AuthenticatedUser): Promise<ParticipantRole> {
+  async resolveRoomId(identifier: string): Promise<string> {
     if (!this.database.configured) {
-      const roomRoles = this.rolesByRoom.get(roomId);
-      if (!roomRoles) throw new NotFoundException('Room not found. Create the room before joining.');
-      if (!(this.roomLiveState.get(roomId) ?? true)) throw new GoneException('This room is closed.');
+      if (this.roomsById.has(identifier)) return identifier;
+      const roomId = this.roomIdBySlug.get(identifier);
+      if (!roomId) throw new NotFoundException('Room not found.');
+      return roomId;
+    }
 
-      const existingRole = roomRoles.get(user.userId);
+    const result = await this.database.query<{ id: string }>(
+      'SELECT id FROM discussion_room WHERE id = $1 OR slug = $1 LIMIT 1',
+      [identifier],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Room not found.');
+    return result.rows[0].id;
+  }
+
+  async resolveRole(identifier: string, user: AuthenticatedUser): Promise<ParticipantRole> {
+    const roomId = await this.resolveRoomId(identifier);
+
+    if (!this.database.configured) {
+      const room = this.getMemoryRoom(roomId);
+      const existingRole = room.roles.get(user.userId);
       if (existingRole) return existingRole;
-
-      roomRoles.set(user.userId, 'listener');
+      room.roles.set(user.userId, 'listener');
       return 'listener';
     }
 
     return this.database.transaction(async (client) => {
-      const room = await client.query<{ is_live: boolean }>(
-        'SELECT is_live FROM discussion_room WHERE id = $1',
-        [roomId],
-      );
-      if (!room.rows[0]) throw new NotFoundException('Room not found. Create the room before joining.');
-      if (!room.rows[0].is_live) throw new GoneException('This room is closed.');
-
       await client.query(
         `INSERT INTO app_user (id, display_name)
          VALUES ($1, $2)
@@ -148,36 +164,43 @@ export class RoomMembershipService {
         'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
         [roomId, user.userId],
       );
-
       if (existing.rows[0]) return existing.rows[0].role;
 
       await client.query(
         'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
         [roomId, user.userId, 'listener'],
       );
-
       return 'listener';
     });
   }
 
-  async closeRoom(roomId: string): Promise<void> {
+  async deleteRoom(identifier: string): Promise<string> {
+    const roomId = await this.resolveRoomId(identifier);
+
     if (!this.database.configured) {
-      if (!this.roomTitles.has(roomId)) throw new NotFoundException('Room not found.');
-      this.roomLiveState.set(roomId, false);
-      return;
+      const room = this.getMemoryRoom(roomId);
+      this.roomIdBySlug.delete(room.slug);
+      this.roomsById.delete(roomId);
+      return roomId;
     }
 
-    const result = await this.database.query(
-      'UPDATE discussion_room SET is_live = FALSE WHERE id = $1',
+    const result = await this.database.query<{ id: string }>(
+      'DELETE FROM discussion_room WHERE id = $1 RETURNING id',
       [roomId],
     );
-    if (result.rowCount === 0) throw new NotFoundException('Room not found.');
+    if (!result.rows[0]) throw new NotFoundException('Room not found.');
+    return roomId;
   }
 
-  async getRole(roomId: string, userId: string): Promise<ParticipantRole | null> {
-    if (!this.database.configured) {
-      return this.rolesByRoom.get(roomId)?.get(userId) ?? null;
+  async getRole(identifier: string, userId: string): Promise<ParticipantRole | null> {
+    let roomId: string;
+    try {
+      roomId = await this.resolveRoomId(identifier);
+    } catch {
+      return null;
     }
+
+    if (!this.database.configured) return this.roomsById.get(roomId)?.roles.get(userId) ?? null;
 
     const result = await this.database.query<{ role: ParticipantRole }>(
       'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
@@ -186,11 +209,13 @@ export class RoomMembershipService {
     return result.rows[0]?.role ?? null;
   }
 
-  async setRole(roomId: string, userId: string, role: ParticipantRole): Promise<void> {
+  async setRole(identifier: string, userId: string, role: ParticipantRole): Promise<void> {
+    const roomId = await this.resolveRoomId(identifier);
+
     if (!this.database.configured) {
-      const roomRoles = this.rolesByRoom.get(roomId);
-      if (!roomRoles || !roomRoles.has(userId)) throw new NotFoundException('Participant is not a room member.');
-      roomRoles.set(userId, role);
+      const room = this.getMemoryRoom(roomId);
+      if (!room.roles.has(userId)) throw new NotFoundException('Participant is not a room member.');
+      room.roles.set(userId, role);
       return;
     }
 
@@ -201,13 +226,14 @@ export class RoomMembershipService {
     if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
   }
 
-  async ensureRole(roomId: string, userId: string, role: ParticipantRole, displayName = userId): Promise<void> {
+  async ensureRole(identifier: string, userId: string, role: ParticipantRole, displayName = userId): Promise<void> {
+    const roomId = await this.resolveRoomId(identifier);
+
     if (!this.database.configured) {
-      const roomRoles = this.rolesByRoom.get(roomId);
-      if (!roomRoles) throw new NotFoundException('Room not found.');
-      const current = roomRoles.get(userId);
+      const room = this.getMemoryRoom(roomId);
+      const current = room.roles.get(userId);
       if (current === 'owner') return;
-      roomRoles.set(userId, role);
+      room.roles.set(userId, role);
       return;
     }
 
@@ -226,5 +252,21 @@ export class RoomMembershipService {
         [roomId, userId, role],
       );
     });
+  }
+
+  private getMemoryRoom(roomId: string): MemoryRoom {
+    const room = this.roomsById.get(roomId);
+    if (!room) throw new NotFoundException('Room not found.');
+    return room;
+  }
+
+  private toMemorySummary(room: MemoryRoom): RoomSummary {
+    return {
+      id: room.id,
+      slug: room.slug,
+      title: room.title,
+      isLive: true,
+      memberCount: room.roles.size,
+    };
   }
 }
