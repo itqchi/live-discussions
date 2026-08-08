@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
+  CloseRoomRequest,
   CreateRoomRequest,
   CreateRoomResponse,
   JoinRoomRequest,
@@ -10,6 +11,7 @@ import type {
   RoomParticipant,
   RoomSummary,
   SetFeaturedParticipantRequest,
+  SetStagePresenceRequest,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { catchError, firstValueFrom, throwError, type Observable } from 'rxjs';
@@ -57,6 +59,19 @@ export class RoomApiService {
     );
   }
 
+  closeRoom(
+    request: CloseRoomRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<void> {
+    return this.toPromise(
+      this.http.patch<void>(`${this.apiBaseUrl}/rooms/close`, request, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to close the room.',
+    );
+  }
+
   setRaisedHand(
     request: RaiseHandRequest,
     devUserId: string,
@@ -67,6 +82,19 @@ export class RoomApiService {
         headers: this.devHeaders(devUserId, displayName),
       }),
       'Unable to update your hand state.',
+    );
+  }
+
+  setStagePresence(
+    request: SetStagePresenceRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<void> {
+    return this.toPromise(
+      this.http.patch<void>(`${this.apiBaseUrl}/rooms/stage-presence`, request, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to update your stage position.',
     );
   }
 
