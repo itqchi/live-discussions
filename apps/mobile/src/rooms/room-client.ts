@@ -8,15 +8,15 @@ export class MobileRoomClient {
     await this.room.connect(session.livekitUrl, session.token);
   }
 
-  setMicrophone(enabled: boolean): Promise<void> {
-    return this.room.localParticipant.setMicrophoneEnabled(enabled).then(() => undefined);
+  async setMicrophone(enabled: boolean): Promise<void> {
+    await this.room.localParticipant.setMicrophoneEnabled(enabled);
   }
 
-  setCamera(enabled: boolean): Promise<void> {
-    return this.room.localParticipant.setCameraEnabled(enabled).then(() => undefined);
+  async setCamera(enabled: boolean): Promise<void> {
+    await this.room.localParticipant.setCameraEnabled(enabled);
   }
 
-  disconnect(): void {
-    this.room.disconnect();
+  async disconnect(): Promise<void> {
+    await this.room.disconnect(true);
   }
 }
