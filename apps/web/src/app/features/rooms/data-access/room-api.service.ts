@@ -6,8 +6,10 @@ import type {
   JoinRoomRequest,
   JoinRoomResponse,
   RaiseHandRequest,
+  RemoveParticipantRequest,
   RoomParticipant,
   RoomSummary,
+  SetFeaturedParticipantRequest,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { catchError, firstValueFrom, throwError, type Observable } from 'rxjs';
@@ -68,6 +70,19 @@ export class RoomApiService {
     );
   }
 
+  setFeaturedParticipant(
+    request: SetFeaturedParticipantRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<void> {
+    return this.toPromise(
+      this.http.patch<void>(`${this.apiBaseUrl}/rooms/featured-participant`, request, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to feature this participant.',
+    );
+  }
+
   updateParticipantRole(
     request: UpdateParticipantRoleRequest,
     devUserId: string,
@@ -78,6 +93,20 @@ export class RoomApiService {
         headers: this.devHeaders(devUserId, displayName),
       }),
       'Unable to update participant role.',
+    );
+  }
+
+  removeParticipant(
+    request: RemoveParticipantRequest,
+    devUserId: string,
+    displayName: string,
+  ): Promise<void> {
+    return this.toPromise(
+      this.http.delete<void>(`${this.apiBaseUrl}/rooms/participants`, {
+        headers: this.devHeaders(devUserId, displayName),
+        body: request,
+      }),
+      'Unable to remove participant from the room.',
     );
   }
 
