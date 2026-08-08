@@ -160,6 +160,10 @@ export class RoomMediaService {
     return this.room.connect(session.livekitUrl, session.token);
   }
 
+  setFeaturedParticipant(participantId: string): void {
+    this.featuredParticipantId.set(participantId);
+  }
+
   async setMicrophone(enabled: boolean): Promise<void> {
     await this.room.localParticipant.setMicrophoneEnabled(enabled);
     this.syncLocalMediaState();
