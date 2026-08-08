@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
+import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService } from './room-media.service';
 
@@ -14,26 +14,52 @@ export class RoomFacade {
   readonly screenSharing = this.media.screenSharing.asReadonly();
   readonly audioPlaybackBlocked = this.media.audioPlaybackBlocked.asReadonly();
   readonly videoTracks = this.media.videoTracks.asReadonly();
+  readonly participants = this.media.participants.asReadonly();
 
   readonly joining = signal(false);
+  readonly creating = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
 
-  readonly canPublishAudio = computed(() => this.participant()?.permissions.canPublishAudio ?? false);
-  readonly canPublishVideo = computed(() => this.participant()?.permissions.canPublishVideo ?? false);
-  readonly canShareScreen = computed(() => this.participant()?.permissions.canShareScreen ?? false);
-  readonly roleLabel = computed(() => this.participant()?.role ?? 'role pending');
-
+  private readonly roomId = signal<string | null>(null);
+  private readonly displayName = signal<string | null>(null);
   private readonly devUserId = this.getOrCreateDevUserId();
+
+  readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
+  readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
+  readonly canPublishAudio = computed(() => this.currentRole() !== 'listener');
+  readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
+  readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
+  readonly canModerate = computed(() => this.currentRole() === 'owner' || this.currentRole() === 'moderator');
+  readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
+  readonly roleLabel = computed(() => this.currentRole());
+
+  async createAndJoin(roomId: string, displayName: string): Promise<void> {
+    const normalizedRoomId = roomId.trim();
+    const normalizedDisplayName = displayName.trim();
+    if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
+
+    this.creating.set(true);
+    this.error.set(null);
+
+    try {
+      await this.api.createRoom(
+        { roomId: normalizedRoomId, title: normalizedRoomId },
+        this.devUserId,
+        normalizedDisplayName,
+      );
+      await this.join(normalizedRoomId, normalizedDisplayName);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to create the room.'));
+    } finally {
+      this.creating.set(false);
+    }
+  }
 
   async join(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
     const normalizedDisplayName = displayName.trim();
-
-    if (!normalizedRoomId || !normalizedDisplayName) {
-      this.error.set('Room ID and display name are required.');
-      return;
-    }
+    if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
 
     this.joining.set(true);
     this.error.set(null);
@@ -44,11 +70,32 @@ export class RoomFacade {
       const session = await this.api.joinRoom(request, this.devUserId, normalizedDisplayName);
       await this.media.connect(session);
       this.participant.set(session.participant);
+      this.roomId.set(normalizedRoomId);
+      this.displayName.set(normalizedDisplayName);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the room.'));
     } finally {
       this.joining.set(false);
     }
+  }
+
+  async toggleRaisedHand(): Promise<void> {
+    const roomId = this.roomId();
+    const displayName = this.displayName();
+    if (!roomId || !displayName) return;
+
+    await this.runAction(
+      () => this.api.setRaisedHand({ roomId, raised: !this.raisedHand() }, this.devUserId, displayName),
+      'Unable to update your hand state.',
+    );
+  }
+
+  async promoteToSpeaker(participantId: string): Promise<void> {
+    await this.updateRole(participantId, 'speaker');
+  }
+
+  async moveToAudience(participantId: string): Promise<void> {
+    await this.updateRole(participantId, 'listener');
   }
 
   async toggleMicrophone(): Promise<void> {
@@ -79,10 +126,33 @@ export class RoomFacade {
   leave(): void {
     this.media.disconnect();
     this.participant.set(null);
+    this.roomId.set(null);
+    this.displayName.set(null);
     this.error.set(null);
   }
 
+  private async updateRole(participantId: string, role: ParticipantRole): Promise<void> {
+    const roomId = this.roomId();
+    const displayName = this.displayName();
+    if (!roomId || !displayName) return;
+
+    await this.runAction(
+      () => this.api.updateParticipantRole({ roomId, participantId, role }, this.devUserId, displayName),
+      'Unable to update participant role.',
+    );
+  }
+
+  private validateIdentity(roomId: string, displayName: string): boolean {
+    if (roomId && displayName) return true;
+    this.error.set('Room ID and display name are required.');
+    return false;
+  }
+
   private async runMediaAction(action: () => Promise<void>, fallbackMessage: string): Promise<void> {
+    await this.runAction(action, fallbackMessage);
+  }
+
+  private async runAction<T>(action: () => Promise<T>, fallbackMessage: string): Promise<void> {
     this.error.set(null);
 
     try {
