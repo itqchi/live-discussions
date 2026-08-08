@@ -27,6 +27,13 @@ export interface DiscussionRoom {
   participants: RoomParticipant[];
 }
 
+export interface RoomSummary {
+  id: string;
+  title: string;
+  isLive: boolean;
+  memberCount: number;
+}
+
 export interface CreateRoomRequest {
   roomId: string;
   title: string;
