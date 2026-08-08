@@ -3,11 +3,12 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
 import { RoomFacade } from '../../data-access/room.facade';
+import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
 @Component({
   selector: 'live-discussions-room-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, VideoTrackComponent],
   templateUrl: './room-page.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
