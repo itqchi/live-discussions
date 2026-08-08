@@ -1,4 +1,4 @@
-import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthenticatedUser, ParticipantRole, RoomSummary } from '@live-discussions/contracts';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
@@ -8,6 +8,10 @@ interface MemoryRoom {
   slug: string;
   title: string;
   roles: Map<string, ParticipantRole>;
+}
+
+interface DatabaseErrorLike {
+  code?: string;
 }
 
 @Injectable()
@@ -50,8 +54,7 @@ export class RoomMembershipService {
     const roomId = await this.resolveRoomId(identifier);
 
     if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      return this.toMemorySummary(room);
+      return this.toMemorySummary(this.getMemoryRoom(roomId));
     }
 
     const result = await this.database.query<{
@@ -99,27 +102,31 @@ export class RoomMembershipService {
       return this.toMemorySummary(room);
     }
 
-    await this.database.transaction(async (client) => {
-      await client.query(
-        `INSERT INTO app_user (id, display_name)
-         VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE
-         SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-        [owner.userId, owner.displayName],
-      );
+    try {
+      await this.database.transaction(async (client) => {
+        await client.query(
+          `INSERT INTO app_user (id, display_name)
+           VALUES ($1, $2)
+           ON CONFLICT (id) DO UPDATE
+           SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+          [owner.userId, owner.displayName],
+        );
 
-      const existing = await client.query('SELECT id FROM discussion_room WHERE slug = $1', [slug]);
-      if (existing.rows[0]) throw new ConflictException('A room with this name already exists.');
-
-      await client.query(
-        'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
-        [id, slug, title],
-      );
-      await client.query(
-        'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
-        [id, owner.userId, 'owner'],
-      );
-    });
+        await client.query(
+          'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
+          [id, slug, title],
+        );
+        await client.query(
+          'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
+          [id, owner.userId, 'owner'],
+        );
+      });
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException('A room with this name already exists.');
+      }
+      throw error;
+    }
 
     return { id, slug, title, isLive: true, memberCount: 1 };
   }
@@ -196,11 +203,14 @@ export class RoomMembershipService {
     let roomId: string;
     try {
       roomId = await this.resolveRoomId(identifier);
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof NotFoundException) return null;
+      throw error;
     }
 
-    if (!this.database.configured) return this.roomsById.get(roomId)?.roles.get(userId) ?? null;
+    if (!this.database.configured) {
+      return this.roomsById.get(roomId)?.roles.get(userId) ?? null;
+    }
 
     const result = await this.database.query<{ role: ParticipantRole }>(
       'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
@@ -226,7 +236,12 @@ export class RoomMembershipService {
     if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
   }
 
-  async ensureRole(identifier: string, userId: string, role: ParticipantRole, displayName = userId): Promise<void> {
+  async ensureRole(
+    identifier: string,
+    userId: string,
+    role: ParticipantRole,
+    displayName = userId,
+  ): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
 
     if (!this.database.configured) {
@@ -252,6 +267,12 @@ export class RoomMembershipService {
         [roomId, userId, role],
       );
     });
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return typeof error === 'object'
+      && error !== null
+      && (error as DatabaseErrorLike).code === '23505';
   }
 
   private getMemoryRoom(roomId: string): MemoryRoom {
