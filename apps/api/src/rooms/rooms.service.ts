@@ -97,7 +97,7 @@ export class RoomsService {
 
     const info = await this.roomServiceClient().updateParticipant(request.roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
-      attributes: { raisedHand: request.role === 'listener' ? undefined as never : 'false' },
+      attributes: { raisedHand: 'false' },
       permission: {
         canSubscribe: true,
         canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
