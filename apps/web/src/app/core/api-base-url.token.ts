@@ -8,7 +8,15 @@ declare global {
   }
 }
 
+const LOCAL_API_BASE_URL = 'http://localhost:3000';
+
 export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL', {
   providedIn: 'root',
-  factory: () => window.__LIVE_DISCUSSIONS_CONFIG__?.apiBaseUrl?.trim() || 'http://localhost:3000',
+  factory: () => {
+    const configured = typeof window === 'undefined'
+      ? undefined
+      : window.__LIVE_DISCUSSIONS_CONFIG__?.apiBaseUrl?.trim();
+
+    return (configured || LOCAL_API_BASE_URL).replace(/\/+$/, '');
+  },
 });
