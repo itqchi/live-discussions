@@ -18,6 +18,7 @@ export interface RoomParticipant {
   role: ParticipantRole;
   permissions: ParticipantPermissions;
   raisedHand?: boolean;
+  onStage?: boolean;
 }
 
 export interface DiscussionRoom {
@@ -57,6 +58,11 @@ export interface JoinRoomResponse {
 export interface RaiseHandRequest {
   roomId: string;
   raised: boolean;
+}
+
+export interface SetStagePresenceRequest {
+  roomId: string;
+  onStage: boolean;
 }
 
 export interface UpdateParticipantRoleRequest {
