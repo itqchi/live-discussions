@@ -1,23 +1,28 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { DevIdentityService } from '../../../../core/dev-identity.service';
 import { RoomFacade } from '../../data-access/room.facade';
 import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
 @Component({
   selector: 'live-discussions-room-page',
   standalone: true,
-  imports: [ReactiveFormsModule, VideoTrackComponent],
+  imports: [ReactiveFormsModule, RouterLink, VideoTrackComponent],
   templateUrl: './room-page.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RoomPageComponent {
+export class RoomPageComponent implements OnInit {
   readonly facade = inject(RoomFacade);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly identity = inject(DevIdentityService);
+
+  readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
 
   readonly joinForm = this.formBuilder.nonNullable.group({
-    roomId: ['general', [Validators.required]],
-    displayName: ['', [Validators.required, Validators.maxLength(80)]],
+    displayName: [this.identity.displayName(), [Validators.required, Validators.maxLength(80)]],
   });
 
   readonly displayName = toSignal(this.joinForm.controls.displayName.valueChanges, {
@@ -35,21 +40,19 @@ export class RoomPageComponent {
       .join('');
   });
 
+  ngOnInit(): void {
+    if (this.route.snapshot.queryParamMap.get('join') === '1' && this.joinForm.valid) {
+      this.join();
+    }
+  }
+
   join(): void {
-    if (!this.validateForm()) return;
-    const { roomId, displayName } = this.joinForm.getRawValue();
-    void this.facade.join(roomId, displayName);
-  }
+    if (this.joinForm.invalid || !this.roomId) {
+      this.joinForm.markAllAsTouched();
+      return;
+    }
 
-  createAndJoin(): void {
-    if (!this.validateForm()) return;
-    const { roomId, displayName } = this.joinForm.getRawValue();
-    void this.facade.createAndJoin(roomId, displayName);
-  }
-
-  private validateForm(): boolean {
-    if (this.joinForm.valid) return true;
-    this.joinForm.markAllAsTouched();
-    return false;
+    const displayName = this.joinForm.controls.displayName.value;
+    void this.facade.join(this.roomId, displayName);
   }
 }
