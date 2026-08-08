@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { HousesModule } from '../houses/houses.module';
 import { RoomsModule } from '../rooms/rooms.module';
 
 @Module({
@@ -8,6 +9,7 @@ import { RoomsModule } from '../rooms/rooms.module';
       isGlobal: true,
       cache: true,
     }),
+    HousesModule,
     RoomsModule,
   ],
 })
