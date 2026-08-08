@@ -291,12 +291,64 @@ export class RoomMediaService {
   private restoreCachedComments(): void {
     const roomName = this.room.name;
     if (!roomName) return;
+
     try {
       const cached = localStorage.getItem(`${COMMENTS_CACHE_PREFIX}${roomName}`);
-      if (!cached) { this.comments.set([]); return; }
-      const parsed = JSON.parse(cached) as RoomComment[];
-      this.comments.set(Array.isArray(parsed) ? parsed.slice(-MAX_CACHED_COMMENTS) : []);
-    } catch { this.comments.set([]); }
+      if (!cached) {
+        this.comments.set([]);
+        return;
+      }
+
+      const parsed = JSON.parse(cached) as unknown;
+      if (!Array.isArray(parsed)) {
+        this.comments.set([]);
+        return;
+      }
+
+      const normalized = parsed
+        .map((comment) => this.normalizeCachedComment(comment))
+        .filter((comment): comment is RoomComment => comment !== null)
+        .slice(-MAX_CACHED_COMMENTS);
+
+      this.comments.set(normalized);
+      this.persistComments(normalized);
+    } catch {
+      this.comments.set([]);
+    }
+  }
+
+  private normalizeCachedComment(value: unknown): RoomComment | null {
+    if (!value || typeof value !== 'object') return null;
+
+    const comment = value as Partial<RoomComment>;
+    if (
+      typeof comment.id !== 'string' ||
+      typeof comment.participantIdentity !== 'string' ||
+      typeof comment.participantName !== 'string' ||
+      typeof comment.text !== 'string'
+    ) {
+      return null;
+    }
+
+    const reactions: Record<string, string[]> = {};
+    if (comment.reactions && typeof comment.reactions === 'object') {
+      for (const [emoji, identities] of Object.entries(comment.reactions)) {
+        if (Array.isArray(identities)) {
+          reactions[emoji] = identities.filter((identity): identity is string => typeof identity === 'string');
+        }
+      }
+    }
+
+    return {
+      id: comment.id,
+      participantIdentity: comment.participantIdentity,
+      participantName: comment.participantName,
+      text: comment.text,
+      timestamp: typeof comment.timestamp === 'number' ? comment.timestamp : Date.now(),
+      isLocal: comment.isLocal === true,
+      replyToId: typeof comment.replyToId === 'string' ? comment.replyToId : null,
+      reactions,
+    };
   }
 
   private persistComments(comments: RoomComment[]): void {
