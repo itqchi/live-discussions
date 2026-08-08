@@ -22,8 +22,10 @@ export class HouseFacade {
   readonly joining = signal(false);
   readonly creatingRoom = signal(false);
   readonly updatingMemberId = signal<string | null>(null);
+  readonly closingRoomId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly canManageMembers = computed(() => this.role() === 'owner');
+  readonly canManageRooms = computed(() => this.role() === 'owner' || this.role() === 'admin');
 
   async load(houseId: string): Promise<void> {
     this.loading.set(true);
@@ -93,7 +95,7 @@ export class HouseFacade {
         this.identity.userId,
         this.displayName(),
       );
-      await this.router.navigate(['/rooms', roomId]);
+      await this.router.navigate(['/room', roomId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create a room in this House.'));
     } finally {
@@ -103,7 +105,27 @@ export class HouseFacade {
 
   joinRoom(roomId: string): Promise<boolean> {
     if (!this.requireDisplayName()) return Promise.resolve(false);
-    return this.router.navigate(['/rooms', roomId]);
+    return this.router.navigate(['/room', roomId]);
+  }
+
+  async closeRoom(roomId: string): Promise<void> {
+    const house = this.house();
+    if (!house || !this.canManageRooms()) return;
+
+    this.closingRoomId.set(roomId);
+    this.error.set(null);
+
+    try {
+      await this.api.closeRoom(house.id, roomId, this.identity.userId, this.displayName());
+      this.house.update((current) => current ? {
+        ...current,
+        rooms: current.rooms.map((room) => room.id === roomId ? { ...room, isLive: false } : room),
+      } : current);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to close the room.'));
+    } finally {
+      this.closingRoomId.set(null);
+    }
   }
 
   goHome(): Promise<boolean> {
