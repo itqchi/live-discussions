@@ -69,4 +69,13 @@ export class HousesController {
   ): Promise<CreateRoomResponse> {
     return this.housesService.createRoom(houseId, request, devIdentityFromHeaders(headers));
   }
+
+  @Patch(':houseId/rooms/:roomId/close')
+  async closeRoom(
+    @Param('houseId') houseId: string,
+    @Param('roomId') roomId: string,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<void> {
+    await this.housesService.closeRoom(houseId, roomId, devIdentityFromHeaders(headers));
+  }
 }
