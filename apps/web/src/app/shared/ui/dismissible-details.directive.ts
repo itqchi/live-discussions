@@ -1,7 +1,7 @@
 import { Directive, ElementRef, HostListener, inject } from '@angular/core';
 
 @Directive({
-  selector: 'details, details[liveDiscussionsDismissibleDetails]',
+  selector: 'details[liveDiscussionsDismissibleDetails]',
   standalone: true,
 })
 export class DismissibleDetailsDirective {
@@ -15,5 +15,10 @@ export class DismissibleDetailsDirective {
     if (details.open && target instanceof Node && !details.contains(target)) {
       details.open = false;
     }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.element.nativeElement.open = false;
   }
 }
