@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
+import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService } from './room-media.service';
 
@@ -7,6 +8,7 @@ import { RoomMediaService } from './room-media.service';
 export class RoomFacade {
   private readonly api = inject(RoomApiService);
   private readonly media = inject(RoomMediaService);
+  private readonly identity = inject(DevIdentityService);
 
   readonly connected = this.media.connected.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
@@ -23,7 +25,6 @@ export class RoomFacade {
 
   private readonly roomId = signal<string | null>(null);
   private readonly displayName = signal<string | null>(null);
-  private readonly devUserId = this.getOrCreateDevUserId();
 
   readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
   readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
@@ -43,9 +44,10 @@ export class RoomFacade {
     this.error.set(null);
 
     try {
+      this.identity.setDisplayName(normalizedDisplayName);
       await this.api.createRoom(
         { roomId: normalizedRoomId, title: normalizedRoomId },
-        this.devUserId,
+        this.identity.userId,
         normalizedDisplayName,
       );
       await this.join(normalizedRoomId, normalizedDisplayName);
@@ -63,11 +65,12 @@ export class RoomFacade {
 
     this.joining.set(true);
     this.error.set(null);
+    this.identity.setDisplayName(normalizedDisplayName);
 
     const request: JoinRoomRequest = { roomId: normalizedRoomId };
 
     try {
-      const session = await this.api.joinRoom(request, this.devUserId, normalizedDisplayName);
+      const session = await this.api.joinRoom(request, this.identity.userId, normalizedDisplayName);
       await this.media.connect(session);
       this.participant.set(session.participant);
       this.roomId.set(normalizedRoomId);
@@ -85,7 +88,7 @@ export class RoomFacade {
     if (!roomId || !displayName) return;
 
     await this.runAction(
-      () => this.api.setRaisedHand({ roomId, raised: !this.raisedHand() }, this.devUserId, displayName),
+      () => this.api.setRaisedHand({ roomId, raised: !this.raisedHand() }, this.identity.userId, displayName),
       'Unable to update your hand state.',
     );
   }
@@ -137,7 +140,7 @@ export class RoomFacade {
     if (!roomId || !displayName) return;
 
     await this.runAction(
-      () => this.api.updateParticipantRole({ roomId, participantId, role }, this.devUserId, displayName),
+      () => this.api.updateParticipantRole({ roomId, participantId, role }, this.identity.userId, displayName),
       'Unable to update participant role.',
     );
   }
@@ -164,15 +167,5 @@ export class RoomFacade {
 
   private errorMessage(error: unknown, fallbackMessage: string): string {
     return error instanceof Error && error.message ? error.message : fallbackMessage;
-  }
-
-  private getOrCreateDevUserId(): string {
-    const key = 'live-discussions.dev-user-id';
-    const existing = sessionStorage.getItem(key);
-    if (existing) return existing;
-
-    const id = crypto.randomUUID();
-    sessionStorage.setItem(key, id);
-    return id;
   }
 }
