@@ -7,6 +7,7 @@ import type {
   CreateRoomResponse,
   GetHouseResponse,
   HouseDetail,
+  HouseMember,
   HouseMemberRole,
   HouseSummary,
   JoinHouseRequest,
@@ -22,6 +23,7 @@ interface HouseRecord {
   name: string;
   description: string;
   members: Map<string, HouseMemberRole>;
+  memberNames: Map<string, string>;
   roomIds: string[];
 }
 
@@ -75,11 +77,15 @@ export class HousesService {
   async getHouse(houseId: string, user: AuthenticatedUser): Promise<GetHouseResponse> {
     const house = await this.getHouseSummary(houseId);
     const rooms = await Promise.all(house.roomIds.map((roomId) => this.roomMemberships.getRoomSummary(roomId)));
-    const role = await this.getMemberRole(houseId, user.userId);
+    const [role, members] = await Promise.all([
+      this.getMemberRole(houseId, user.userId),
+      this.getMembers(houseId),
+    ]);
 
     const detail: HouseDetail = {
       ...house,
       rooms,
+      members,
     };
 
     return { house: detail, role };
@@ -94,6 +100,7 @@ export class HousesService {
         name: request.name,
         description: request.description,
         members: new Map([[owner.userId, 'owner']]),
+        memberNames: new Map([[owner.userId, owner.displayName]]),
         roomIds: [],
       };
 
@@ -139,6 +146,7 @@ export class HousesService {
       const existingRole = house.members.get(user.userId);
       const role: HouseMemberRole = existingRole ?? 'member';
       house.members.set(user.userId, role);
+      house.memberNames.set(user.userId, user.displayName);
       return { house: this.toSummary(house), role };
     }
 
@@ -173,6 +181,47 @@ export class HousesService {
     };
   }
 
+  async updateMemberRole(
+    houseId: string,
+    targetUserId: string,
+    role: Extract<HouseMemberRole, 'admin' | 'member'>,
+    actor: AuthenticatedUser,
+  ): Promise<HouseMember> {
+    const actorRole = await this.getMemberRole(houseId, actor.userId);
+    if (actorRole !== 'owner') throw new ForbiddenException('Only the House owner can manage House admins.');
+
+    const targetRole = await this.getMemberRole(houseId, targetUserId);
+    if (!targetRole) throw new NotFoundException('House member not found.');
+    if (targetRole === 'owner') throw new ForbiddenException('The House owner role cannot be changed here.');
+
+    let displayName = targetUserId;
+
+    if (!this.database.configured) {
+      const house = this.getHouseRecord(houseId);
+      house.members.set(targetUserId, role);
+      displayName = house.memberNames.get(targetUserId) ?? targetUserId;
+    } else {
+      const result = await this.database.query<{ display_name: string }>(
+        `UPDATE house_member member
+         SET role = $3
+         FROM app_user app
+         WHERE member.house_id = $1 AND member.user_id = $2 AND app.id = member.user_id
+         RETURNING app.display_name`,
+        [houseId, targetUserId, role],
+      );
+      if (!result.rows[0]) throw new NotFoundException('House member not found.');
+      displayName = result.rows[0].display_name;
+    }
+
+    const house = await this.getHouseSummary(houseId);
+    const roomRole = role === 'admin' ? 'moderator' : 'listener';
+    await Promise.all(
+      house.roomIds.map((roomId) => this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName)),
+    );
+
+    return { userId: targetUserId, displayName, role };
+  }
+
   async createRoom(
     houseId: string,
     request: CreateHouseRoomRequest,
@@ -186,7 +235,9 @@ export class HousesService {
     const response = await this.roomsService.createRoom(request, user);
 
     if (!this.database.configured) {
-      this.getHouseRecord(houseId).roomIds.push(request.roomId);
+      const house = this.getHouseRecord(houseId);
+      house.roomIds.push(request.roomId);
+      await this.applyAdminsToRoom(houseId, request.roomId);
       return response;
     }
 
@@ -194,7 +245,52 @@ export class HousesService {
       'INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)',
       [houseId, request.roomId],
     );
+    await this.applyAdminsToRoom(houseId, request.roomId);
     return response;
+  }
+
+  private async applyAdminsToRoom(houseId: string, roomId: string): Promise<void> {
+    const admins = (await this.getMembers(houseId)).filter((member) => member.role === 'admin');
+    await Promise.all(
+      admins.map((admin) => this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName)),
+    );
+  }
+
+  private async getMembers(houseId: string): Promise<HouseMember[]> {
+    if (!this.database.configured) {
+      const house = this.getHouseRecord(houseId);
+      return [...house.members.entries()]
+        .map(([userId, role]) => ({
+          userId,
+          displayName: house.memberNames.get(userId) ?? userId,
+          role,
+        }))
+        .sort((left, right) => this.memberSort(left, right));
+    }
+
+    const result = await this.database.query<{
+      user_id: string;
+      display_name: string;
+      role: HouseMemberRole;
+    }>(
+      `SELECT member.user_id, app.display_name, member.role
+       FROM house_member member
+       JOIN app_user app ON app.id = member.user_id
+       WHERE member.house_id = $1
+       ORDER BY CASE member.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, app.display_name ASC`,
+      [houseId],
+    );
+
+    return result.rows.map((row) => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+      role: row.role,
+    }));
+  }
+
+  private memberSort(left: HouseMember, right: HouseMember): number {
+    const rank = (role: HouseMemberRole) => role === 'owner' ? 0 : role === 'admin' ? 1 : 2;
+    return rank(left.role) - rank(right.role) || left.displayName.localeCompare(right.displayName);
   }
 
   private async getHouseSummary(houseId: string): Promise<HouseSummary> {
