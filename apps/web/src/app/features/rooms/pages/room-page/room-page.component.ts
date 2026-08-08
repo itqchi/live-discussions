@@ -27,13 +27,11 @@ export class RoomPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    if (this.route.snapshot.queryParamMap.get('join') === '1' && this.roomId && this.displayName()) {
-      this.join();
-    }
+    if (this.roomId && this.displayName()) this.join();
   }
 
   join(): void {
-    if (!this.roomId || !this.displayName()) return;
+    if (!this.roomId || !this.displayName() || this.facade.connected() || this.facade.joining()) return;
     void this.facade.join(this.roomId, this.displayName());
   }
 
