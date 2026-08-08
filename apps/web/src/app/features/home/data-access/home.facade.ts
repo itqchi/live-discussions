@@ -42,6 +42,10 @@ export class HomeFacade {
     this.identity.setDisplayName(displayName);
   }
 
+  houseForRoom(roomId: string): HouseSummary | null {
+    return this.houses().find((house) => house.roomIds.includes(roomId)) ?? null;
+  }
+
   async joinRoom(roomId: string): Promise<void> {
     if (!this.requireDisplayName()) return;
     await this.router.navigate(['/rooms', roomId], { queryParams: { join: '1' } });
