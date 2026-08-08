@@ -8,6 +8,7 @@ export interface HouseSummary {
   description: string;
   memberCount: number;
   roomCount: number;
+  roomIds: string[];
 }
 
 export interface HouseDetail extends HouseSummary {
