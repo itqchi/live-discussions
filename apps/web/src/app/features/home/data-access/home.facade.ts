@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { HouseSummary, RoomSummary } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
+import { RoomNavigationService } from '../../../core/room-navigation.service';
 import { roomSlugFromName } from '../../../core/room-route.util';
 import { HouseApiService } from '../../houses/data-access/house-api.service';
 import { RoomApiService } from '../../rooms/data-access/room-api.service';
@@ -10,6 +11,7 @@ import { RoomApiService } from '../../rooms/data-access/room-api.service';
 export class HomeFacade {
   private readonly router = inject(Router);
   private readonly identity = inject(DevIdentityService);
+  private readonly navigation = inject(RoomNavigationService);
   private readonly roomsApi = inject(RoomApiService);
   private readonly housesApi = inject(HouseApiService);
 
@@ -24,12 +26,8 @@ export class HomeFacade {
   async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
-
     try {
-      const [rooms, houses] = await Promise.all([
-        this.roomsApi.listRooms(),
-        this.housesApi.listHouses(),
-      ]);
+      const [rooms, houses] = await Promise.all([this.roomsApi.listRooms(), this.housesApi.listHouses()]);
       this.rooms.set(rooms);
       this.houses.set(houses);
     } catch (error) {
@@ -39,17 +37,16 @@ export class HomeFacade {
     }
   }
 
-  setDisplayName(displayName: string): void {
-    this.identity.setDisplayName(displayName);
-  }
+  setDisplayName(displayName: string): void { this.identity.setDisplayName(displayName); }
 
   houseForRoom(roomId: string): HouseSummary | null {
     return this.houses().find((house) => house.roomIds.includes(roomId)) ?? null;
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(roomSlug: string): Promise<void> {
     if (!this.requireDisplayName()) return;
-    await this.router.navigate(['/room', roomId]);
+    this.navigation.rememberOrigin(roomSlug, '/');
+    await this.router.navigate(['/room', roomSlug]);
   }
 
   async createRoom(title: string): Promise<void> {
@@ -58,18 +55,17 @@ export class HomeFacade {
       if (!normalizedTitle) this.error.set('Enter a room title.');
       return;
     }
-
     this.creatingRoom.set(true);
     this.error.set(null);
-
     try {
-      const roomId = roomSlugFromName(normalizedTitle);
-      await this.roomsApi.createRoom(
-        { roomId, title: normalizedTitle },
+      const slug = roomSlugFromName(normalizedTitle);
+      const response = await this.roomsApi.createRoom(
+        { roomId: slug, title: normalizedTitle },
         this.identity.userId,
         this.displayName(),
       );
-      await this.router.navigate(['/room', roomId]);
+      this.navigation.rememberOrigin(response.room.slug, '/');
+      await this.router.navigate(['/room', response.room.slug]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create the room.'));
     } finally {
@@ -83,10 +79,8 @@ export class HomeFacade {
       if (!normalizedName) this.error.set('Enter a house name.');
       return;
     }
-
     this.creatingHouse.set(true);
     this.error.set(null);
-
     try {
       const response = await this.housesApi.createHouse(
         { name: normalizedName, description: description.trim() },
@@ -104,22 +98,15 @@ export class HomeFacade {
   async joinHouse(houseId: string): Promise<void> {
     if (!this.requireDisplayName()) return;
     this.error.set(null);
-
     try {
-      await this.housesApi.joinHouse(
-        { houseId },
-        this.identity.userId,
-        this.displayName(),
-      );
+      await this.housesApi.joinHouse({ houseId }, this.identity.userId, this.displayName());
       await this.router.navigate(['/houses', houseId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the house.'));
     }
   }
 
-  openHouse(houseId: string): Promise<boolean> {
-    return this.router.navigate(['/houses', houseId]);
-  }
+  openHouse(houseId: string): Promise<boolean> { return this.router.navigate(['/houses', houseId]); }
 
   private requireDisplayName(): boolean {
     if (this.displayName().trim()) return true;
