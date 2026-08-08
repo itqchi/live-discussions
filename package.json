@@ -11,7 +11,7 @@
     "nx": "nx",
     "graph": "nx graph",
     "web": "nx serve web",
-    "api": "node --env-file=.env ./node_modules/nx/bin/nx.js serve api",
+    "api": "NODE_OPTIONS=--env-file=.env nx serve api",
     "build:web": "nx build web",
     "build:api": "nx build api",
     "mobile": "nx start mobile",
