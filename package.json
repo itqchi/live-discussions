@@ -13,7 +13,9 @@
     "web": "nx serve web",
     "api": "node scripts/serve-api.mjs",
     "build:web": "nx build web",
+    "build:web:render": "node scripts/write-web-runtime-config.mjs && nx build web",
     "build:api": "nx build api",
+    "start:api:production": "node scripts/start-api-production.mjs",
     "mobile": "nx start mobile",
     "mobile:ios": "nx run-ios mobile",
     "mobile:android": "nx run-android mobile"
