@@ -2,8 +2,10 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import type { JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
 import {
+  type LocalVideoTrack,
   type Participant,
   type RemoteAudioTrack,
+  type RemoteVideoTrack,
   Room,
   RoomEvent,
   Track,
@@ -26,6 +28,19 @@ export interface RoomComment {
   isLocal: boolean;
 }
 
+export interface VideoTile {
+  id: number;
+  participantIdentity: string;
+  participantName: string;
+  isLocal: boolean;
+  source: Track.Source;
+  track: LocalVideoTrack | RemoteVideoTrack;
+}
+
+interface LiveRoomMetadata {
+  featuredParticipantId?: string;
+}
+
 const COMMENTS_TOPIC = 'live-discussions.comments';
 
 @Injectable()
@@ -34,12 +49,17 @@ export class RoomMediaService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly room = new Room();
   private readonly audioElements = new Map<RemoteAudioTrack, HTMLMediaElement>();
+  private nextVideoTileId = 1;
 
   readonly connected = signal(false);
   readonly microphoneEnabled = signal(false);
+  readonly cameraEnabled = signal(false);
+  readonly screenSharing = signal(false);
   readonly audioPlaybackBlocked = signal(false);
   readonly participants = signal<RoomPresenceParticipant[]>([]);
   readonly comments = signal<RoomComment[]>([]);
+  readonly videoTracks = signal<VideoTile[]>([]);
+  readonly featuredParticipantId = signal<string | null>(null);
 
   constructor() {
     this.room.registerTextStreamHandler(COMMENTS_TOPIC, async (reader, participantInfo) => {
@@ -63,6 +83,8 @@ export class RoomMediaService {
       this.connected.set(true);
       this.syncAudioPlaybackState();
       this.syncParticipants();
+      this.syncRoomMetadata(this.room.metadata);
+      this.syncLocalMediaState();
     });
 
     this.room.on(RoomEvent.AudioPlaybackStatusChanged, () => this.syncAudioPlaybackState());
@@ -71,16 +93,59 @@ export class RoomMediaService {
     this.room.on(RoomEvent.ParticipantMetadataChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantNameChanged, () => this.syncParticipants());
     this.room.on(RoomEvent.ParticipantPermissionsChanged, () => this.syncParticipants());
+    this.room.on(RoomEvent.RoomMetadataChanged, (metadata) => this.syncRoomMetadata(metadata));
 
-    this.room.on(RoomEvent.TrackSubscribed, (track) => {
-      if (track.kind === Track.Kind.Audio) this.attachAudioTrack(track as RemoteAudioTrack);
+    this.room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      if (track.kind === Track.Kind.Audio) {
+        this.attachAudioTrack(track as RemoteAudioTrack);
+        return;
+      }
+
+      if (track.kind !== Track.Kind.Video) return;
+      this.addVideoTrack(
+        track as RemoteVideoTrack,
+        participant.identity,
+        participant.name || participant.identity,
+        false,
+        publication.source,
+      );
     });
 
     this.room.on(RoomEvent.TrackUnsubscribed, (track) => {
-      if (track.kind === Track.Kind.Audio) this.detachAudioTrack(track as RemoteAudioTrack);
+      if (track.kind === Track.Kind.Audio) {
+        this.detachAudioTrack(track as RemoteAudioTrack);
+        return;
+      }
+
+      this.removeVideoTrack(track);
     });
 
-    this.room.on(RoomEvent.ParticipantDisconnected, () => this.syncParticipants());
+    this.room.on(RoomEvent.LocalTrackPublished, (publication, participant) => {
+      const track = publication.track;
+      if (track?.kind === Track.Kind.Video) {
+        this.addVideoTrack(
+          track as LocalVideoTrack,
+          participant.identity,
+          participant.name || participant.identity,
+          true,
+          publication.source,
+        );
+      }
+      this.syncLocalMediaState();
+    });
+
+    this.room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+      if (publication.track) this.removeVideoTrack(publication.track);
+      this.syncLocalMediaState();
+    });
+
+    this.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      this.videoTracks.update((tiles) =>
+        tiles.filter((tile) => tile.participantIdentity !== participant.identity),
+      );
+      this.syncParticipants();
+    });
+
     this.room.on(RoomEvent.Disconnected, () => this.resetMediaState());
 
     this.destroyRef.onDestroy(() => {
@@ -97,7 +162,22 @@ export class RoomMediaService {
 
   async setMicrophone(enabled: boolean): Promise<void> {
     await this.room.localParticipant.setMicrophoneEnabled(enabled);
-    this.microphoneEnabled.set(enabled);
+    this.syncLocalMediaState();
+  }
+
+  async setCamera(enabled: boolean): Promise<void> {
+    await this.room.localParticipant.setCameraEnabled(enabled);
+    this.syncLocalMediaState();
+  }
+
+  async setScreenShare(enabled: boolean): Promise<void> {
+    const publication = await this.room.localParticipant.setScreenShareEnabled(enabled);
+
+    if (enabled && !publication) {
+      throw new Error('Screen sharing was not started. Your browser may have cancelled or blocked the share request.');
+    }
+
+    this.syncLocalMediaState();
   }
 
   async sendComment(text: string): Promise<void> {
@@ -130,6 +210,19 @@ export class RoomMediaService {
     this.room.disconnect();
   }
 
+  private syncLocalMediaState(): void {
+    const publications = [...this.room.localParticipant.trackPublications.values()];
+    this.microphoneEnabled.set(
+      publications.some((publication) => publication.source === Track.Source.Microphone && !publication.isMuted),
+    );
+    this.cameraEnabled.set(
+      publications.some((publication) => publication.source === Track.Source.Camera && !publication.isMuted),
+    );
+    this.screenSharing.set(
+      publications.some((publication) => publication.source === Track.Source.ScreenShare && !publication.isMuted),
+    );
+  }
+
   private syncAudioPlaybackState(): void {
     this.audioPlaybackBlocked.set(!this.room.canPlaybackAudio);
   }
@@ -146,6 +239,22 @@ export class RoomMediaService {
     );
 
     this.participants.set([local, ...remote]);
+  }
+
+  private syncRoomMetadata(metadata: string | undefined): void {
+    if (!metadata) {
+      this.featuredParticipantId.set(null);
+      return;
+    }
+
+    try {
+      const featuredParticipantId = (JSON.parse(metadata) as LiveRoomMetadata).featuredParticipantId;
+      this.featuredParticipantId.set(
+        typeof featuredParticipantId === 'string' && featuredParticipantId ? featuredParticipantId : null,
+      );
+    } catch {
+      this.featuredParticipantId.set(null);
+    }
   }
 
   private participantName(identity: string): string {
@@ -214,8 +323,38 @@ export class RoomMediaService {
     this.cleanupAudioTracks();
     this.connected.set(false);
     this.microphoneEnabled.set(false);
+    this.cameraEnabled.set(false);
+    this.screenSharing.set(false);
     this.audioPlaybackBlocked.set(false);
     this.participants.set([]);
     this.comments.set([]);
+    this.videoTracks.set([]);
+    this.featuredParticipantId.set(null);
+  }
+
+  private addVideoTrack(
+    track: LocalVideoTrack | RemoteVideoTrack,
+    participantIdentity: string,
+    participantName: string,
+    isLocal: boolean,
+    source: Track.Source,
+  ): void {
+    if (this.videoTracks().some((tile) => tile.track === track)) return;
+
+    this.videoTracks.update((tiles) => [
+      ...tiles,
+      {
+        id: this.nextVideoTileId++,
+        participantIdentity,
+        participantName,
+        isLocal,
+        source,
+        track,
+      },
+    ]);
+  }
+
+  private removeVideoTrack(track: unknown): void {
+    this.videoTracks.update((tiles) => tiles.filter((tile) => tile.track !== track));
   }
 }
