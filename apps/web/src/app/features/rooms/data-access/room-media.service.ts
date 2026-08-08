@@ -16,6 +16,7 @@ export interface RoomPresenceParticipant {
   name: string;
   role: ParticipantRole;
   raisedHand: boolean;
+  onStage: boolean;
   isLocal: boolean;
 }
 
@@ -26,6 +27,14 @@ export interface RoomComment {
   text: string;
   timestamp: number;
   isLocal: boolean;
+  replyToId: string | null;
+  reactions: Record<string, string[]>;
+}
+
+export interface StageReaction {
+  id: string;
+  participantIdentity: string;
+  emoji: string;
 }
 
 export interface VideoTile {
@@ -42,8 +51,11 @@ interface LiveRoomMetadata {
 }
 
 const COMMENTS_TOPIC = 'live-discussions.comments';
+const COMMENT_REACTIONS_TOPIC = 'live-discussions.comment-reactions';
+const STAGE_REACTIONS_TOPIC = 'live-discussions.stage-reactions';
 const COMMENTS_CACHE_PREFIX = 'live-discussions.room-comments.';
 const MAX_CACHED_COMMENTS = 200;
+const STAGE_REACTION_DURATION_MS = 3500;
 
 @Injectable()
 export class RoomMediaService {
@@ -51,6 +63,7 @@ export class RoomMediaService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly room = new Room();
   private readonly audioElements = new Map<RemoteAudioTrack, HTMLMediaElement>();
+  private readonly stageReactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private nextVideoTileId = 1;
 
   readonly connected = signal(false);
@@ -60,6 +73,7 @@ export class RoomMediaService {
   readonly audioPlaybackBlocked = signal(false);
   readonly participants = signal<RoomPresenceParticipant[]>([]);
   readonly comments = signal<RoomComment[]>([]);
+  readonly stageReactions = signal<Record<string, StageReaction>>({});
   readonly videoTracks = signal<VideoTile[]>([]);
   readonly featuredParticipantId = signal<string | null>(null);
 
@@ -75,7 +89,24 @@ export class RoomMediaService {
         text,
         timestamp: reader.info.timestamp,
         isLocal: false,
+        replyToId: reader.info.attributes?.['replyToId'] || null,
+        reactions: {},
       });
+    });
+
+    this.room.registerTextStreamHandler(COMMENT_REACTIONS_TOPIC, async (reader, participantInfo) => {
+      const emoji = (await reader.readAll()).trim();
+      const commentId = reader.info.attributes?.['commentId'];
+      const action = reader.info.attributes?.['action'] === 'remove' ? 'remove' : 'add';
+      if (!emoji || !commentId) return;
+      this.applyCommentReaction(commentId, emoji, participantInfo.identity, action);
+    });
+
+    this.room.registerTextStreamHandler(STAGE_REACTIONS_TOPIC, async (reader, participantInfo) => {
+      const emoji = (await reader.readAll()).trim();
+      const targetIdentity = reader.info.attributes?.['targetIdentity'] || participantInfo.identity;
+      if (!emoji) return;
+      this.showStageReaction(targetIdentity, emoji, reader.info.id);
     });
 
     this.room.on(RoomEvent.Connected, () => {
@@ -150,7 +181,10 @@ export class RoomMediaService {
 
     this.destroyRef.onDestroy(() => {
       this.cleanupAudioTracks();
+      this.clearStageReactionTimers();
       this.room.unregisterTextStreamHandler(COMMENTS_TOPIC);
+      this.room.unregisterTextStreamHandler(COMMENT_REACTIONS_TOPIC);
+      this.room.unregisterTextStreamHandler(STAGE_REACTIONS_TOPIC);
       this.room.removeAllListeners();
       this.room.disconnect();
     });
@@ -160,7 +194,7 @@ export class RoomMediaService {
     return this.room.connect(session.livekitUrl, session.token);
   }
 
-  setFeaturedParticipant(participantId: string): void {
+  setFeaturedParticipant(participantId: string | null): void {
     this.featuredParticipantId.set(participantId);
   }
 
@@ -184,12 +218,13 @@ export class RoomMediaService {
     this.syncLocalMediaState();
   }
 
-  async sendComment(text: string): Promise<void> {
+  async sendComment(text: string, replyToId: string | null = null): Promise<void> {
     const normalizedText = text.trim();
     if (!normalizedText || !this.connected()) return;
 
     const info = await this.room.localParticipant.sendText(normalizedText, {
       topic: COMMENTS_TOPIC,
+      attributes: replyToId ? { replyToId } : undefined,
     });
 
     this.appendComment({
@@ -199,7 +234,36 @@ export class RoomMediaService {
       text: normalizedText,
       timestamp: Date.now(),
       isLocal: true,
+      replyToId,
+      reactions: {},
     });
+  }
+
+  async toggleCommentReaction(commentId: string, emoji: string): Promise<void> {
+    const identity = this.room.localParticipant.identity;
+    const comment = this.comments().find((candidate) => candidate.id === commentId);
+    if (!comment || !this.connected()) return;
+
+    const hasReaction = comment.reactions[emoji]?.includes(identity) ?? false;
+    const action = hasReaction ? 'remove' : 'add';
+
+    await this.room.localParticipant.sendText(emoji, {
+      topic: COMMENT_REACTIONS_TOPIC,
+      attributes: { commentId, action },
+    });
+    this.applyCommentReaction(commentId, emoji, identity, action);
+  }
+
+  async sendStageReaction(emoji: string): Promise<void> {
+    const normalizedEmoji = emoji.trim();
+    if (!normalizedEmoji || !this.connected()) return;
+
+    const identity = this.room.localParticipant.identity;
+    const info = await this.room.localParticipant.sendText(normalizedEmoji, {
+      topic: STAGE_REACTIONS_TOPIC,
+      attributes: { targetIdentity: identity },
+    });
+    this.showStageReaction(identity, normalizedEmoji, info.id);
   }
 
   async resumeAudio(): Promise<void> {
@@ -220,6 +284,54 @@ export class RoomMediaService {
     });
   }
 
+  private applyCommentReaction(
+    commentId: string,
+    emoji: string,
+    participantIdentity: string,
+    action: 'add' | 'remove',
+  ): void {
+    this.comments.update((comments) => {
+      const next = comments.map((comment) => {
+        if (comment.id !== commentId) return comment;
+
+        const current = comment.reactions[emoji] ?? [];
+        const identities = action === 'add'
+          ? [...new Set([...current, participantIdentity])]
+          : current.filter((identity) => identity !== participantIdentity);
+        const reactions = { ...comment.reactions };
+
+        if (identities.length) reactions[emoji] = identities;
+        else delete reactions[emoji];
+
+        return { ...comment, reactions };
+      });
+      this.persistComments(next);
+      return next;
+    });
+  }
+
+  private showStageReaction(participantIdentity: string, emoji: string, id: string): void {
+    const existingTimer = this.stageReactionTimers.get(participantIdentity);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    this.stageReactions.update((reactions) => ({
+      ...reactions,
+      [participantIdentity]: { id, participantIdentity, emoji },
+    }));
+
+    this.stageReactionTimers.set(
+      participantIdentity,
+      setTimeout(() => {
+        this.stageReactions.update((reactions) => {
+          const next = { ...reactions };
+          delete next[participantIdentity];
+          return next;
+        });
+        this.stageReactionTimers.delete(participantIdentity);
+      }, STAGE_REACTION_DURATION_MS),
+    );
+  }
+
   private restoreCachedComments(): void {
     const roomName = this.room.name;
     if (!roomName) return;
@@ -231,8 +343,17 @@ export class RoomMediaService {
         return;
       }
 
-      const parsed = JSON.parse(cached) as RoomComment[];
-      this.comments.set(Array.isArray(parsed) ? parsed.slice(-MAX_CACHED_COMMENTS) : []);
+      const parsed = JSON.parse(cached) as Partial<RoomComment>[];
+      this.comments.set(Array.isArray(parsed) ? parsed.slice(-MAX_CACHED_COMMENTS).map((comment) => ({
+        id: comment.id ?? crypto.randomUUID(),
+        participantIdentity: comment.participantIdentity ?? '',
+        participantName: comment.participantName ?? 'Unknown',
+        text: comment.text ?? '',
+        timestamp: comment.timestamp ?? Date.now(),
+        isLocal: comment.isLocal ?? false,
+        replyToId: comment.replyToId ?? null,
+        reactions: comment.reactions ?? {},
+      })) : []);
     } catch {
       this.comments.set([]);
     }
@@ -245,7 +366,7 @@ export class RoomMediaService {
     try {
       localStorage.setItem(`${COMMENTS_CACHE_PREFIX}${roomName}`, JSON.stringify(comments));
     } catch {
-      // Comment delivery should keep working even when browser storage is unavailable.
+      // Realtime delivery should keep working even when browser storage is unavailable.
     }
   }
 
@@ -306,11 +427,15 @@ export class RoomMediaService {
   }
 
   private toPresenceParticipant(participant: Participant, isLocal: boolean): RoomPresenceParticipant {
+    const role = this.roleFromMetadata(participant.metadata);
+    const explicitOnStage = participant.attributes['onStage'];
+
     return {
       identity: participant.identity,
       name: participant.name || participant.identity,
-      role: this.roleFromMetadata(participant.metadata),
+      role,
       raisedHand: participant.attributes['raisedHand'] === 'true',
+      onStage: explicitOnStage ? explicitOnStage === 'true' : role !== 'listener',
       isLocal,
     };
   }
@@ -358,14 +483,21 @@ export class RoomMediaService {
     this.audioElements.clear();
   }
 
+  private clearStageReactionTimers(): void {
+    for (const timer of this.stageReactionTimers.values()) clearTimeout(timer);
+    this.stageReactionTimers.clear();
+  }
+
   private resetMediaState(): void {
     this.cleanupAudioTracks();
+    this.clearStageReactionTimers();
     this.connected.set(false);
     this.microphoneEnabled.set(false);
     this.cameraEnabled.set(false);
     this.screenSharing.set(false);
     this.audioPlaybackBlocked.set(false);
     this.participants.set([]);
+    this.stageReactions.set({});
     this.videoTracks.set([]);
     this.featuredParticipantId.set(null);
   }
