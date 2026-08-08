@@ -7,13 +7,19 @@ import type {
   JoinRoomRequest,
   JoinRoomResponse,
   RaiseHandRequest,
+  RemoveParticipantRequest,
   RoomParticipant,
   RoomSummary,
+  SetFeaturedParticipantRequest,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { permissionsForRole } from './room-permissions';
 import { RoomMembershipService } from './room-membership.service';
+
+interface LiveRoomMetadata {
+  featuredParticipantId?: string;
+}
 
 @Injectable()
 export class RoomsService {
@@ -78,14 +84,56 @@ export class RoomsService {
     });
   }
 
+  async setFeaturedParticipant(
+    request: SetFeaturedParticipantRequest,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    await this.assertCanModerate(request.roomId, actor.userId);
+
+    const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
+    if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
+
+    const roomService = this.roomServiceClient();
+    await roomService.getParticipant(request.roomId, request.participantId);
+    await roomService.updateRoomMetadata(
+      request.roomId,
+      JSON.stringify({ featuredParticipantId: request.participantId } satisfies LiveRoomMetadata),
+    );
+  }
+
+  async removeParticipant(
+    request: RemoveParticipantRequest,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    const actorRole = await this.assertCanModerate(request.roomId, actor.userId);
+
+    if (request.participantId === actor.userId) {
+      throw new ForbiddenException('Use Leave to exit the room yourself.');
+    }
+
+    const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
+    if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
+    if (targetRole === 'owner') throw new ForbiddenException('The room owner cannot be removed.');
+    if (actorRole === 'moderator' && targetRole === 'moderator') {
+      throw new ForbiddenException('Moderators cannot remove other moderators.');
+    }
+
+    const roomService = this.roomServiceClient();
+    const [room] = await roomService.listRooms([request.roomId]);
+    const metadata = this.parseRoomMetadata(room?.metadata);
+
+    await roomService.removeParticipant(request.roomId, request.participantId);
+
+    if (metadata.featuredParticipantId === request.participantId) {
+      await roomService.updateRoomMetadata(request.roomId, JSON.stringify({} satisfies LiveRoomMetadata));
+    }
+  }
+
   async updateParticipantRole(
     request: UpdateParticipantRoleRequest,
     actor: AuthenticatedUser,
   ): Promise<RoomParticipant> {
-    const actorRole = await this.memberships.getRole(request.roomId, actor.userId);
-    if (actorRole !== 'owner' && actorRole !== 'moderator') {
-      throw new ForbiddenException('Only owners and moderators can change participant roles.');
-    }
+    const actorRole = await this.assertCanModerate(request.roomId, actor.userId);
 
     if (request.role === 'owner' && actorRole !== 'owner') {
       throw new ForbiddenException('Only the owner can assign the owner role.');
@@ -117,6 +165,26 @@ export class RoomsService {
       permissions,
       raisedHand: false,
     };
+  }
+
+  private async assertCanModerate(roomId: string, userId: string): Promise<'owner' | 'moderator'> {
+    const role = await this.memberships.getRole(roomId, userId);
+    if (role !== 'owner' && role !== 'moderator') {
+      throw new ForbiddenException('Only owners and moderators can perform this action.');
+    }
+
+    return role;
+  }
+
+  private parseRoomMetadata(metadata: string | undefined): LiveRoomMetadata {
+    if (!metadata) return {};
+
+    try {
+      const parsed = JSON.parse(metadata) as LiveRoomMetadata;
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 
   private toParticipant(user: AuthenticatedUser, role: RoomParticipant['role']): RoomParticipant {
