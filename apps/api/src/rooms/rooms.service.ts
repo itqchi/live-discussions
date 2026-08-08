@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, ServiceUnavailableException } from '@ne
 import { ConfigService } from '@nestjs/config';
 import type {
   AuthenticatedUser,
+  CloseRoomRequest,
   CreateRoomRequest,
   CreateRoomResponse,
   JoinRoomRequest,
@@ -12,6 +13,7 @@ import type {
   RoomParticipant,
   RoomSummary,
   SetFeaturedParticipantRequest,
+  SetStagePresenceRequest,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
@@ -41,7 +43,7 @@ export class RoomsService {
       room: {
         id: request.roomId,
         title: request.title,
-        isLive: false,
+        isLive: true,
         participants: [participant],
       },
       participant,
@@ -57,7 +59,10 @@ export class RoomsService {
       identity: user.userId,
       name: user.displayName,
       metadata: JSON.stringify({ role }),
-      attributes: { raisedHand: 'false' },
+      attributes: {
+        raisedHand: 'false',
+        onStage: role === 'listener' ? 'false' : 'true',
+      },
       ttl: '1h',
     });
 
@@ -76,12 +81,32 @@ export class RoomsService {
     };
   }
 
+  async closeRoom(request: CloseRoomRequest, actor: AuthenticatedUser): Promise<void> {
+    await this.assertCanModerate(request.roomId, actor.userId);
+    await this.memberships.closeRoom(request.roomId);
+
+    try {
+      await this.roomServiceClient().deleteRoom(request.roomId);
+    } catch {
+      // The persistent room is closed even when no LiveKit room is currently active.
+    }
+  }
+
   async setRaisedHand(request: RaiseHandRequest, user: AuthenticatedUser): Promise<void> {
     const role = await this.memberships.getRole(request.roomId, user.userId);
     if (!role) throw new ForbiddenException('You are not a member of this room.');
 
     await this.roomServiceClient().updateParticipant(request.roomId, user.userId, {
       attributes: { raisedHand: request.raised ? 'true' : 'false' },
+    });
+  }
+
+  async setStagePresence(request: SetStagePresenceRequest, user: AuthenticatedUser): Promise<void> {
+    const role = await this.memberships.getRole(request.roomId, user.userId);
+    if (!role) throw new ForbiddenException('You are not a member of this room.');
+
+    await this.roomServiceClient().updateParticipant(request.roomId, user.userId, {
+      attributes: { onStage: request.onStage ? 'true' : 'false' },
     });
   }
 
@@ -162,7 +187,7 @@ export class RoomsService {
     }
 
     const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
-    if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
+    if (!targetRole) throw new ForbiddenException('Participant is not a room member.');
     if (targetRole === 'owner' && actorRole !== 'owner') {
       throw new ForbiddenException('Moderators cannot change the owner role.');
     }
@@ -170,10 +195,14 @@ export class RoomsService {
     await this.memberships.setRole(request.roomId, request.participantId, request.role);
     const permissions = permissionsForRole(request.role);
     const roomService = this.roomServiceClient();
+    const onStage = request.role !== 'listener';
 
     const info = await roomService.updateParticipant(request.roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
-      attributes: { raisedHand: 'false' },
+      attributes: {
+        raisedHand: 'false',
+        onStage: onStage ? 'true' : 'false',
+      },
       permission: {
         canSubscribe: true,
         canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
@@ -187,6 +216,7 @@ export class RoomsService {
       role: request.role,
       permissions,
       raisedHand: false,
+      onStage,
     };
   }
 
@@ -230,6 +260,7 @@ export class RoomsService {
       role,
       permissions: permissionsForRole(role),
       raisedHand: false,
+      onStage: role !== 'listener',
     };
   }
 
