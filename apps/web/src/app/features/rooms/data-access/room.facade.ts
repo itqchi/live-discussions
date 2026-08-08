@@ -1,15 +1,17 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
 import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomApiService } from './room-api.service';
-import { RoomMediaService, type VideoTile } from './room-media.service';
+import { RoomMediaService, type RoomComment, type VideoTile } from './room-media.service';
 
 @Injectable()
 export class RoomFacade {
   private readonly api = inject(RoomApiService);
   private readonly media = inject(RoomMediaService);
   private readonly identity = inject(DevIdentityService);
+  private readonly router = inject(Router);
 
   readonly connected = this.media.connected.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
@@ -18,6 +20,7 @@ export class RoomFacade {
   readonly audioPlaybackBlocked = this.media.audioPlaybackBlocked.asReadonly();
   readonly participants = this.media.participants.asReadonly();
   readonly comments = this.media.comments.asReadonly();
+  readonly stageReactions = this.media.stageReactions.asReadonly();
   readonly videoTracks = this.media.videoTracks.asReadonly();
   readonly featuredParticipantId = this.media.featuredParticipantId.asReadonly();
   readonly displayName = this.identity.displayName;
@@ -25,6 +28,7 @@ export class RoomFacade {
   readonly joining = signal(false);
   readonly creating = signal(false);
   readonly sendingComment = signal(false);
+  readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
 
@@ -37,16 +41,31 @@ export class RoomFacade {
   readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
   readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
   readonly canModerate = computed(() => this.currentRole() === 'owner' || this.currentRole() === 'moderator');
+  readonly canCloseRoom = this.canModerate;
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
+  readonly isLocalOnStage = computed(() => this.localPresence()?.onStage ?? false);
 
   readonly ownerParticipant = computed(() =>
     this.participants().find((participant) => participant.role === 'owner') ?? null,
   );
 
-  readonly effectiveFeaturedParticipantId = computed(() =>
-    this.featuredParticipantId() ?? this.ownerParticipant()?.identity ?? null,
+  readonly stageParticipants = computed(() =>
+    this.participants().filter((participant) => participant.onStage),
   );
+
+  readonly audienceParticipants = computed(() =>
+    this.participants().filter((participant) => !participant.onStage),
+  );
+
+  readonly effectiveFeaturedParticipantId = computed(() => {
+    const explicit = this.featuredParticipantId();
+    if (explicit && this.participants().some((participant) => participant.identity === explicit)) return explicit;
+
+    const owner = this.ownerParticipant();
+    if (owner?.onStage) return owner.identity;
+    return this.stageParticipants()[0]?.identity ?? null;
+  });
 
   readonly featuredParticipant = computed(() => {
     const participantId = this.effectiveFeaturedParticipantId();
@@ -64,18 +83,10 @@ export class RoomFacade {
     this.videoTracks().find((tile) => tile.source === Track.Source.ScreenShare) ?? null,
   );
 
-  readonly stageParticipants = computed(() =>
-    this.participants().filter((participant) => participant.role !== 'listener'),
-  );
-
   readonly secondaryStageParticipants = computed(() => {
     const featuredId = this.effectiveFeaturedParticipantId();
     return this.stageParticipants().filter((participant) => participant.identity !== featuredId);
   });
-
-  readonly audienceParticipants = computed(() =>
-    this.participants().filter((participant) => participant.role === 'listener'),
-  );
 
   async createAndJoin(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
@@ -123,7 +134,31 @@ export class RoomFacade {
     }
   }
 
-  async sendComment(text: string): Promise<boolean> {
+  async closeRoom(): Promise<boolean> {
+    const context = this.actionContext();
+    if (!context || !this.canCloseRoom()) return false;
+
+    this.closingRoom.set(true);
+    this.error.set(null);
+
+    try {
+      await this.api.closeRoom(
+        { roomId: context.roomId },
+        this.identity.userId,
+        context.displayName,
+      );
+      this.media.disconnect();
+      await this.router.navigate(['/']);
+      return true;
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to close the room.'));
+      return false;
+    } finally {
+      this.closingRoom.set(false);
+    }
+  }
+
+  async sendComment(text: string, replyToId: string | null = null): Promise<boolean> {
     const normalizedText = text.trim();
     if (!normalizedText || !this.connected()) return false;
 
@@ -131,7 +166,7 @@ export class RoomFacade {
     this.error.set(null);
 
     try {
-      await this.media.sendComment(normalizedText);
+      await this.media.sendComment(normalizedText, replyToId);
       return true;
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to send comment.'));
@@ -139,6 +174,42 @@ export class RoomFacade {
     } finally {
       this.sendingComment.set(false);
     }
+  }
+
+  toggleCommentReaction(commentId: string, emoji: string): Promise<void> {
+    return this.runAction(
+      () => this.media.toggleCommentReaction(commentId, emoji),
+      'Unable to react to this comment.',
+    );
+  }
+
+  sendStageReaction(emoji: string): Promise<void> {
+    return this.runAction(
+      () => this.media.sendStageReaction(emoji),
+      'Unable to send reaction.',
+    );
+  }
+
+  commentById(commentId: string | null): RoomComment | null {
+    return commentId ? this.comments().find((comment) => comment.id === commentId) ?? null : null;
+  }
+
+  stageReactionFor(participantId: string): string | null {
+    return this.stageReactions()[participantId]?.emoji ?? null;
+  }
+
+  async setSelfOnStage(onStage: boolean): Promise<void> {
+    const context = this.actionContext();
+    if (!context || !this.connected()) return;
+
+    await this.runAction(
+      () => this.api.setStagePresence(
+        { roomId: context.roomId, onStage },
+        this.identity.userId,
+        context.displayName,
+      ),
+      'Unable to update your stage position.',
+    );
   }
 
   async toggleRaisedHand(): Promise<void> {
@@ -183,10 +254,9 @@ export class RoomFacade {
         this.identity.userId,
         context.displayName,
       );
-      const ownerId = this.ownerParticipant()?.identity;
-      if (ownerId) this.media.setFeaturedParticipant(ownerId);
+      this.media.setFeaturedParticipant(null);
     } catch (error) {
-      this.error.set(this.errorMessage(error, 'Unable to restore the owner to the featured spot.'));
+      this.error.set(this.errorMessage(error, 'Unable to restore the default featured spot.'));
     }
   }
 
