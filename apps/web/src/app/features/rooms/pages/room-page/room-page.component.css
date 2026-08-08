@@ -1,4 +1,12 @@
 :host .size-32 {
-  width: 14rem;
-  height: 14rem;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16rem;
+  height: 16rem;
+  transform: translate(-50%, -50%);
+}
+
+:host .size-32 + p {
+  display: none;
 }
