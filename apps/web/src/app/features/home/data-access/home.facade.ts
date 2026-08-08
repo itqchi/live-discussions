@@ -49,7 +49,7 @@ export class HomeFacade {
 
   async joinRoom(roomId: string): Promise<void> {
     if (!this.requireDisplayName()) return;
-    await this.router.navigate(['/rooms', roomId]);
+    await this.router.navigate(['/room', roomId]);
   }
 
   async createRoom(title: string): Promise<void> {
@@ -69,7 +69,7 @@ export class HomeFacade {
         this.identity.userId,
         this.displayName(),
       );
-      await this.router.navigate(['/rooms', roomId]);
+      await this.router.navigate(['/room', roomId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create the room.'));
     } finally {
