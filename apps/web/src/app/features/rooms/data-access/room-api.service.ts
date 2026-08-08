@@ -1,7 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
-  CloseRoomRequest,
   CreateRoomRequest,
   CreateRoomResponse,
   JoinRoomRequest,
@@ -43,9 +42,9 @@ export class RoomApiService {
     );
   }
 
-  closeRoom(request: CloseRoomRequest): Promise<void> {
+  closeRoom(roomId: string): Promise<void> {
     return apiRequestToPromise(
-      this.http.patch<void>(`${this.apiBaseUrl}/rooms/close`, request),
+      this.http.delete<void>(`${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}`),
       'Unable to close the room.',
     );
   }
