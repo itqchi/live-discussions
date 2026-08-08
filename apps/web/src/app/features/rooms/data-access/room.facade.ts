@@ -105,6 +105,7 @@ export class RoomFacade {
     this.error.set(null);
     const request: JoinRoomRequest = { roomId: normalizedRoomId };
     try {
+      this.returningToOrigin = false;
       this.roomId.set(normalizedRoomId);
       this.joinedDisplayName.set(normalizedDisplayName);
       const session = await this.api.joinRoom(request, this.identity.userId, normalizedDisplayName);
@@ -122,6 +123,7 @@ export class RoomFacade {
     this.error.set(null);
     try {
       await this.api.closeRoom({ roomId: context.roomId }, this.identity.userId, context.displayName);
+      await this.media.disconnect();
       await this.returnToOrigin();
       return true;
     } catch (error) {
@@ -131,7 +133,7 @@ export class RoomFacade {
   }
 
   async leave(): Promise<void> {
-    this.media.disconnect();
+    await this.media.disconnect();
     await this.returnToOrigin();
   }
 
@@ -246,6 +248,7 @@ export class RoomFacade {
     } finally {
       this.roomId.set(null);
       this.joinedDisplayName.set(null);
+      this.returningToOrigin = false;
     }
   }
 
