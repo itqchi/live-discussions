@@ -19,6 +19,7 @@ import type {
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { permissionsForRole } from './room-permissions';
 import { RoomMembershipService } from './room-membership.service';
+import { roomSlugFromTitle } from './room-slug';
 
 interface LiveRoomMetadata {
   featuredParticipantId?: string;
@@ -36,7 +37,8 @@ export class RoomsService {
   }
 
   async createRoom(request: CreateRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
-    const summary = await this.memberships.createRoom(request.roomId, request.title, user);
+    const slug = roomSlugFromTitle(request.title);
+    const summary = await this.memberships.createRoom(slug, request.title, user);
     const participant = this.toParticipant(user, 'owner');
 
     return {
@@ -106,6 +108,9 @@ export class RoomsService {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
     const role = await this.memberships.getRole(roomId, user.userId);
     if (!role) throw new ForbiddenException('You are not a member of this room.');
+    if (role === 'listener' && request.onStage) {
+      throw new ForbiddenException('Listeners must be invited to speak before returning to the stage.');
+    }
 
     await this.roomServiceClient().updateParticipant(roomId, user.userId, {
       attributes: { onStage: request.onStage ? 'true' : 'false' },
@@ -154,7 +159,7 @@ export class RoomsService {
         },
       });
     } catch {
-      // The role is persisted. An offline participant receives it on their next join.
+      // Persistence is authoritative. Offline participants receive the persisted role when they next join.
     }
   }
 
@@ -187,21 +192,18 @@ export class RoomsService {
   ): Promise<RoomParticipant> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
     const actorRole = await this.assertCanModerate(roomId, actor.userId);
-
-    if (request.role === 'owner' && actorRole !== 'owner') {
-      throw new ForbiddenException('Only the owner can assign the owner role.');
-    }
-
     const targetRole = await this.memberships.getRole(roomId, request.participantId);
+
     if (!targetRole) throw new ForbiddenException('Participant is not a room member.');
-    if (targetRole === 'owner' && actorRole !== 'owner') {
-      throw new ForbiddenException('Moderators cannot change the owner role.');
+    if (targetRole === 'owner') throw new ForbiddenException('The room owner role cannot be changed here.');
+    if (targetRole === 'moderator' && actorRole !== 'owner') {
+      throw new ForbiddenException('Moderators cannot change another moderator role.');
     }
 
     await this.memberships.setRole(roomId, request.participantId, request.role);
     const permissions = permissionsForRole(request.role);
     const roomService = this.roomServiceClient();
-    const onStage = request.role !== 'listener';
+    const onStage = request.role === 'speaker';
 
     const info = await roomService.updateParticipant(roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
