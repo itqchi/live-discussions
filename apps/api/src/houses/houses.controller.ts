@@ -17,7 +17,7 @@ export class HousesController {
   constructor(private readonly housesService: HousesService) {}
 
   @Get()
-  list(): HouseSummary[] {
+  list(): Promise<HouseSummary[]> {
     return this.housesService.listHouses();
   }
 
@@ -33,7 +33,7 @@ export class HousesController {
   create(
     @Body() request: CreateHouseDto,
     @Headers() headers: Record<string, string | string[] | undefined>,
-  ): CreateHouseResponse {
+  ): Promise<CreateHouseResponse> {
     return this.housesService.createHouse(request, devIdentityFromHeaders(headers));
   }
 
@@ -41,7 +41,7 @@ export class HousesController {
   join(
     @Body() request: JoinHouseDto,
     @Headers() headers: Record<string, string | string[] | undefined>,
-  ): JoinHouseResponse {
+  ): Promise<JoinHouseResponse> {
     return this.housesService.joinHouse(request, devIdentityFromHeaders(headers));
   }
 
