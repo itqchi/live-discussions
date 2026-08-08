@@ -20,6 +20,7 @@ import { VideoTrackComponent } from '../../ui/video-track/video-track.component'
   standalone: true,
   imports: [ReactiveFormsModule, RouterLink, VideoTrackComponent, DismissibleDetailsDirective],
   templateUrl: './room-page.component.html',
+  styleUrl: './room-page.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RoomPageComponent implements OnInit {
@@ -89,7 +90,7 @@ export class RoomPageComponent implements OnInit {
   }
 
   reactionEntries(comment: RoomComment): { emoji: string; count: number }[] {
-    return Object.entries(comment.reactions)
+    return Object.entries(comment.reactions ?? {})
       .filter(([, identities]) => identities.length > 0)
       .map(([emoji, identities]) => ({ emoji, count: identities.length }));
   }
