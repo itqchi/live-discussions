@@ -51,7 +51,7 @@ export class RoomMediaService {
         {
           id: reader.info.id,
           participantIdentity: participantInfo.identity,
-          participantName: participantInfo.name || participantInfo.identity,
+          participantName: this.participantName(participantInfo.identity),
           text,
           timestamp: reader.info.timestamp,
           isLocal: false,
@@ -146,6 +146,15 @@ export class RoomMediaService {
     );
 
     this.participants.set([local, ...remote]);
+  }
+
+  private participantName(identity: string): string {
+    if (identity === this.room.localParticipant.identity) {
+      return this.room.localParticipant.name || identity;
+    }
+
+    const participant = this.room.remoteParticipants.get(identity);
+    return participant?.name || identity;
   }
 
   private toPresenceParticipant(participant: Participant, isLocal: boolean): RoomPresenceParticipant {
