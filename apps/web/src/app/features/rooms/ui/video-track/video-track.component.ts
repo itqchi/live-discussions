@@ -1,12 +1,13 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  Input,
   OnChanges,
   OnDestroy,
   SimpleChanges,
   ViewChild,
-  Input,
 } from '@angular/core';
 import type { LocalVideoTrack, RemoteVideoTrack } from 'livekit-client';
 
@@ -18,7 +19,7 @@ type VideoTrack = LocalVideoTrack | RemoteVideoTrack;
   templateUrl: './video-track.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class VideoTrackComponent implements OnChanges, OnDestroy {
+export class VideoTrackComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input({ required: true }) track!: VideoTrack;
 
   @ViewChild('video', { static: true })
@@ -27,7 +28,7 @@ export class VideoTrackComponent implements OnChanges, OnDestroy {
   private attachedTrack: VideoTrack | null = null;
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (!changes['track'] || !this.video) return;
+    if (!changes['track']) return;
     this.attachCurrentTrack();
   }
 
@@ -40,7 +41,7 @@ export class VideoTrackComponent implements OnChanges, OnDestroy {
   }
 
   private attachCurrentTrack(): void {
-    if (!this.track || !this.video || this.attachedTrack === this.track) return;
+    if (!this.video || this.attachedTrack === this.track) return;
     this.detachCurrentTrack();
     this.track.attach(this.video.nativeElement);
     this.attachedTrack = this.track;
