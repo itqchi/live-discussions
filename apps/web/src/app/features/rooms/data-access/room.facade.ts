@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
+import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService } from './room-media.service';
@@ -12,9 +13,13 @@ export class RoomFacade {
 
   readonly connected = this.media.connected.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
+  readonly cameraEnabled = this.media.cameraEnabled.asReadonly();
+  readonly screenSharing = this.media.screenSharing.asReadonly();
   readonly audioPlaybackBlocked = this.media.audioPlaybackBlocked.asReadonly();
   readonly participants = this.media.participants.asReadonly();
   readonly comments = this.media.comments.asReadonly();
+  readonly videoTracks = this.media.videoTracks.asReadonly();
+  readonly featuredParticipantId = this.media.featuredParticipantId.asReadonly();
   readonly displayName = this.identity.displayName;
 
   readonly joining = signal(false);
@@ -29,6 +34,8 @@ export class RoomFacade {
   readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
   readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
   readonly canPublishAudio = computed(() => this.currentRole() !== 'listener');
+  readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
+  readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
   readonly canModerate = computed(() => this.currentRole() === 'owner' || this.currentRole() === 'moderator');
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
@@ -40,6 +47,29 @@ export class RoomFacade {
   readonly audienceParticipants = computed(() =>
     this.participants().filter((participant) => participant.role === 'listener'),
   );
+
+  readonly mainStageTrack = computed(() => {
+    const tracks = this.videoTracks();
+    const screenShare = tracks.find((tile) => tile.source === Track.Source.ScreenShare);
+    if (screenShare) return screenShare;
+
+    const featuredParticipantId = this.featuredParticipantId();
+    if (featuredParticipantId) {
+      const featuredCamera = tracks.find(
+        (tile) => tile.participantIdentity === featuredParticipantId && tile.source === Track.Source.Camera,
+      );
+      if (featuredCamera) return featuredCamera;
+    }
+
+    return tracks.find((tile) => tile.source === Track.Source.Camera) ?? null;
+  });
+
+  readonly cameraThumbnails = computed(() => {
+    const mainTrack = this.mainStageTrack();
+    return this.videoTracks().filter(
+      (tile) => tile.source === Track.Source.Camera && tile.id !== mainTrack?.id,
+    );
+  });
 
   async createAndJoin(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
@@ -119,6 +149,20 @@ export class RoomFacade {
     );
   }
 
+  async featureParticipant(participantId: string): Promise<void> {
+    const context = this.actionContext();
+    if (!context) return;
+
+    await this.runAction(
+      () => this.api.setFeaturedParticipant(
+        { roomId: context.roomId, participantId },
+        this.identity.userId,
+        context.displayName,
+      ),
+      'Unable to feature this participant.',
+    );
+  }
+
   async promoteToSpeaker(participantId: string): Promise<void> {
     await this.updateRole(participantId, 'speaker');
   }
@@ -145,6 +189,20 @@ export class RoomFacade {
     await this.runAction(
       () => this.media.setMicrophone(!this.microphoneEnabled()),
       'Unable to change microphone state.',
+    );
+  }
+
+  async toggleCamera(): Promise<void> {
+    await this.runAction(
+      () => this.media.setCamera(!this.cameraEnabled()),
+      'Unable to change camera state.',
+    );
+  }
+
+  async toggleScreenShare(): Promise<void> {
+    await this.runAction(
+      () => this.media.setScreenShare(!this.screenSharing()),
+      'Unable to change screen sharing state.',
     );
   }
 
