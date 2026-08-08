@@ -62,4 +62,14 @@ export class HousePageComponent implements OnInit {
 
     void this.facade.joinRoom(roomId);
   }
+
+  initialsFor(name: string): string {
+    const value = name.trim();
+    if (!value) return '?';
+    return value
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('');
+  }
 }
