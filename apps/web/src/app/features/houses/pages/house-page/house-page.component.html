@@ -66,7 +66,7 @@
             <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">DISCUSSIONS</p>
             <h2 class="mt-1 text-2xl font-semibold">Rooms in this House</h2>
           </div>
-          <span class="text-sm text-slate-400">{{ house.rooms.length }} available</span>
+          <span class="text-sm text-slate-400">{{ house.rooms.length }} rooms</span>
         </div>
 
         @if (house.rooms.length) {
@@ -75,18 +75,45 @@
               <article class="flex min-h-48 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
                 <div>
                   <div class="mb-4 flex items-center justify-between gap-3">
-                    <span class="rounded-full bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-200">LIVE</span>
-                    <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+                    <span
+                      class="rounded-full px-3 py-1 text-xs font-bold"
+                      [class.bg-emerald-950]="room.isLive"
+                      [class.text-emerald-200]="room.isLive"
+                      [class.bg-slate-800]="!room.isLive"
+                      [class.text-slate-400]="!room.isLive"
+                    >
+                      {{ room.isLive ? 'LIVE' : 'CLOSED' }}
+                    </span>
+
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+                      @if (facade.canManageRooms() && room.isLive) {
+                        <details class="relative" liveDiscussionsDismissibleDetails>
+                          <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
+                          <div class="absolute right-0 top-9 z-30 w-44 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                            <button
+                              class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60 disabled:opacity-40"
+                              type="button"
+                              (click)="facade.closeRoom(room.id)"
+                              [disabled]="facade.closingRoomId() === room.id"
+                            >
+                              {{ facade.closingRoomId() === room.id ? 'Closing…' : 'Close room' }}
+                            </button>
+                          </div>
+                        </details>
+                      }
+                    </div>
                   </div>
                   <h3 class="text-xl font-semibold">{{ room.title }}</h3>
                 </div>
 
                 <button
-                  class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950"
+                  class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
                   type="button"
                   (click)="joinRoom(room.id)"
+                  [disabled]="!room.isLive"
                 >
-                  Join discussion
+                  {{ room.isLive ? 'Join discussion' : 'Room closed' }}
                 </button>
               </article>
             }
@@ -144,11 +171,7 @@
                   {{ initialsFor(member.displayName) }}
                 </div>
                 <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <strong class="truncate text-sm">{{ member.displayName }}</strong>
-                    @if (member.userId === facade.displayName()) {
-                    }
-                  </div>
+                  <strong class="truncate text-sm">{{ member.displayName }}</strong>
                   <span
                     class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize"
                     [class.bg-violet-950]="member.role === 'owner'"
@@ -163,7 +186,7 @@
                 </div>
 
                 @if (facade.canManageMembers() && member.role !== 'owner') {
-                  <details class="relative shrink-0">
+                  <details class="relative shrink-0" liveDiscussionsDismissibleDetails>
                     <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
                     <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
                       @if (member.role === 'member') {
