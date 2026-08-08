@@ -64,3 +64,13 @@ export interface UpdateParticipantRoleRequest {
   participantId: string;
   role: ParticipantRole;
 }
+
+export interface SetFeaturedParticipantRequest {
+  roomId: string;
+  participantId: string;
+}
+
+export interface RemoveParticipantRequest {
+  roomId: string;
+  participantId: string;
+}
