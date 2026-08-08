@@ -1,3 +1,5 @@
+import type { RoomSummary } from './room';
+
 export type HouseMemberRole = 'owner' | 'member';
 
 export interface HouseSummary {
@@ -5,6 +7,11 @@ export interface HouseSummary {
   name: string;
   description: string;
   memberCount: number;
+  roomCount: number;
+}
+
+export interface HouseDetail extends HouseSummary {
+  rooms: RoomSummary[];
 }
 
 export interface CreateHouseRequest {
@@ -24,4 +31,14 @@ export interface JoinHouseRequest {
 export interface JoinHouseResponse {
   house: HouseSummary;
   role: HouseMemberRole;
+}
+
+export interface GetHouseResponse {
+  house: HouseDetail;
+  role: HouseMemberRole | null;
+}
+
+export interface CreateHouseRoomRequest {
+  roomId: string;
+  title: string;
 }
