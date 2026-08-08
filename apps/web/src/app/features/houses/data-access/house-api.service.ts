@@ -29,7 +29,7 @@ export class HouseApiService {
 
   getHouse(houseId: string): Promise<GetHouseResponse> {
     return apiRequestToPromise(
-      this.http.get<GetHouseResponse>(`${this.apiBaseUrl}/houses/${houseId}`),
+      this.http.get<GetHouseResponse>(`${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}`),
       'Unable to load the House.',
     );
   }
@@ -53,21 +53,29 @@ export class HouseApiService {
     request: Omit<UpdateHouseMemberRoleRequest, 'houseId'>,
   ): Promise<HouseMember> {
     return apiRequestToPromise(
-      this.http.patch<HouseMember>(`${this.apiBaseUrl}/houses/${houseId}/members/role`, request),
+      this.http.patch<HouseMember>(
+        `${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}/members/role`,
+        request,
+      ),
       'Unable to update the House member role.',
     );
   }
 
   createRoom(houseId: string, request: CreateHouseRoomRequest): Promise<CreateRoomResponse> {
     return apiRequestToPromise(
-      this.http.post<CreateRoomResponse>(`${this.apiBaseUrl}/houses/${houseId}/rooms`, request),
+      this.http.post<CreateRoomResponse>(
+        `${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}/rooms`,
+        request,
+      ),
       'Unable to create the room in this House.',
     );
   }
 
   closeRoom(houseId: string, roomId: string): Promise<void> {
     return apiRequestToPromise(
-      this.http.patch<void>(`${this.apiBaseUrl}/houses/${houseId}/rooms/${roomId}/close`, {}),
+      this.http.delete<void>(
+        `${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}/rooms/${encodeURIComponent(roomId)}`,
+      ),
       'Unable to close the room.',
     );
   }
