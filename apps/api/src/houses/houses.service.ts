@@ -161,7 +161,10 @@ export class HousesService {
 
   async createRoom(houseId: string, request: CreateHouseRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
     const role = await this.getMemberRole(houseId, user.userId);
-    if (role !== 'owner') throw new ForbiddenException('Only the House owner can create rooms in this House.');
+    if (role !== 'owner' && role !== 'admin') {
+      throw new ForbiddenException('Only the House owner or an admin can create rooms in this House.');
+    }
+
     const house = await this.getHouseSummary(houseId);
     const rooms = await this.existingRooms(house.roomIds);
     const normalizedName = request.title.trim().toLocaleLowerCase();
@@ -169,10 +172,19 @@ export class HousesService {
       throw new ConflictException('A room with this name already exists in this House.');
     }
 
-    const response = await this.roomsService.createRoom(request, user);
+    const members = await this.getMembers(houseId);
+    const houseOwner = members.find((member) => member.role === 'owner');
+    if (!houseOwner) throw new NotFoundException('House owner not found.');
+
+    const roomOwner: AuthenticatedUser = {
+      userId: houseOwner.userId,
+      displayName: houseOwner.displayName,
+    };
+    const response = await this.roomsService.createRoom(request, roomOwner);
     const roomId = response.room.id;
     if (!this.database.configured) this.getHouseRecord(houseId).roomIds.push(roomId);
     else await this.database.query('INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)', [houseId, roomId]);
+
     await this.applyAdminsToRoom(houseId, roomId);
     return response;
   }
