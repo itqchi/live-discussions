@@ -17,6 +17,7 @@ export interface RoomParticipant {
   displayName: string;
   role: ParticipantRole;
   permissions: ParticipantPermissions;
+  raisedHand?: boolean;
 }
 
 export interface DiscussionRoom {
@@ -24,6 +25,16 @@ export interface DiscussionRoom {
   title: string;
   isLive: boolean;
   participants: RoomParticipant[];
+}
+
+export interface CreateRoomRequest {
+  roomId: string;
+  title: string;
+}
+
+export interface CreateRoomResponse {
+  room: DiscussionRoom;
+  participant: RoomParticipant;
 }
 
 export interface JoinRoomRequest {
@@ -34,4 +45,15 @@ export interface JoinRoomResponse {
   livekitUrl: string;
   token: string;
   participant: RoomParticipant;
+}
+
+export interface RaiseHandRequest {
+  roomId: string;
+  raised: boolean;
+}
+
+export interface UpdateParticipantRoleRequest {
+  roomId: string;
+  participantId: string;
+  role: ParticipantRole;
 }
