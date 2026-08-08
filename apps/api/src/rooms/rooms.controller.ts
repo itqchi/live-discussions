@@ -6,11 +6,13 @@ import type {
   RoomSummary,
 } from '@live-discussions/contracts';
 import { devIdentityFromHeaders } from '../auth/dev-identity';
+import { CloseRoomDto } from './dto/close-room.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
 import { RemoveParticipantDto } from './dto/remove-participant.dto';
 import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
+import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
 import { RoomsService } from './rooms.service';
 
@@ -39,12 +41,28 @@ export class RoomsController {
     return this.roomsService.createJoinToken(request, devIdentityFromHeaders(headers));
   }
 
+  @Patch('close')
+  async closeRoom(
+    @Body() request: CloseRoomDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<void> {
+    await this.roomsService.closeRoom(request, devIdentityFromHeaders(headers));
+  }
+
   @Patch('hand')
   async setRaisedHand(
     @Body() request: RaiseHandDto,
     @Headers() headers: Record<string, string | string[] | undefined>,
   ): Promise<void> {
     await this.roomsService.setRaisedHand(request, devIdentityFromHeaders(headers));
+  }
+
+  @Patch('stage-presence')
+  async setStagePresence(
+    @Body() request: SetStagePresenceDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<void> {
+    await this.roomsService.setStagePresence(request, devIdentityFromHeaders(headers));
   }
 
   @Patch('featured-participant')
