@@ -7,6 +7,7 @@ import type {
   JoinRoomResponse,
   RaiseHandRequest,
   RoomParticipant,
+  RoomSummary,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { catchError, firstValueFrom, throwError, type Observable } from 'rxjs';
@@ -20,6 +21,13 @@ interface ApiErrorBody {
 export class RoomApiService {
   private readonly http = inject(HttpClient);
   private readonly apiBaseUrl = inject(API_BASE_URL);
+
+  listRooms(): Promise<RoomSummary[]> {
+    return this.toPromise(
+      this.http.get<RoomSummary[]>(`${this.apiBaseUrl}/rooms`),
+      'Unable to load rooms.',
+    );
+  }
 
   createRoom(
     request: CreateRoomRequest,
