@@ -252,6 +252,17 @@ export class HousesService {
     return response;
   }
 
+  async closeRoom(houseId: string, roomId: string, user: AuthenticatedUser): Promise<void> {
+    const role = await this.getMemberRole(houseId, user.userId);
+    if (role !== 'owner' && role !== 'admin') {
+      throw new ForbiddenException('Only the House owner or an admin can close rooms.');
+    }
+
+    const house = await this.getHouseSummary(houseId);
+    if (!house.roomIds.includes(roomId)) throw new NotFoundException('Room does not belong to this House.');
+    await this.roomsService.closeRoom({ roomId }, user);
+  }
+
   private async applyAdminsToRoom(houseId: string, roomId: string): Promise<void> {
     const admins = (await this.getMembers(houseId)).filter((member) => member.role === 'admin');
     await Promise.all(
