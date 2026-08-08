@@ -8,7 +8,7 @@ export const appRoutes: Routes = [
       import('./features/home/home.routes').then((module) => module.HOME_ROUTES),
   },
   {
-    path: 'rooms',
+    path: 'room',
     loadChildren: () =>
       import('./features/rooms/rooms.routes').then((module) => module.ROOMS_ROUTES),
   },
