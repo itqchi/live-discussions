@@ -1,6 +1,10 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { GetHouseResponse, HouseDetail, HouseMemberRole } from '@live-discussions/contracts';
+import type {
+  GetHouseResponse,
+  HouseDetail,
+  HouseMemberRole,
+} from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { HouseApiService } from './house-api.service';
 
@@ -16,7 +20,9 @@ export class HouseFacade {
   readonly loading = signal(false);
   readonly joining = signal(false);
   readonly creatingRoom = signal(false);
+  readonly updatingMemberId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
+  readonly canManageMembers = computed(() => this.role() === 'owner');
 
   async load(houseId: string): Promise<void> {
     this.loading.set(true);
@@ -51,11 +57,20 @@ export class HouseFacade {
       );
       this.house.update((current) => current ? { ...current, memberCount: response.house.memberCount } : current);
       this.role.set(response.role);
+      await this.load(house.id);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the House.'));
     } finally {
       this.joining.set(false);
     }
+  }
+
+  promoteToAdmin(userId: string): Promise<void> {
+    return this.updateMemberRole(userId, 'admin');
+  }
+
+  demoteToMember(userId: string): Promise<void> {
+    return this.updateMemberRole(userId, 'member');
   }
 
   async createRoom(title: string): Promise<void> {
@@ -92,6 +107,31 @@ export class HouseFacade {
 
   goHome(): Promise<boolean> {
     return this.router.navigate(['/']);
+  }
+
+  private async updateMemberRole(userId: string, role: 'admin' | 'member'): Promise<void> {
+    const house = this.house();
+    if (!house || !this.canManageMembers()) return;
+
+    this.updatingMemberId.set(userId);
+    this.error.set(null);
+
+    try {
+      const member = await this.api.updateMemberRole(
+        house.id,
+        { userId, role },
+        this.identity.userId,
+        this.displayName(),
+      );
+      this.house.update((current) => current ? {
+        ...current,
+        members: current.members.map((existing) => existing.userId === member.userId ? member : existing),
+      } : current);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to update the House member role.'));
+    } finally {
+      this.updatingMemberId.set(null);
+    }
   }
 
   private applyResponse(response: GetHouseResponse): void {
