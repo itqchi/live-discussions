@@ -50,10 +50,8 @@ export class RoomFacade {
 
   readonly mainStageTrack = computed(() => {
     const tracks = this.videoTracks();
-    const screenShare = tracks.find((tile) => tile.source === Track.Source.ScreenShare);
-    if (screenShare) return screenShare;
-
     const featuredParticipantId = this.featuredParticipantId();
+
     if (featuredParticipantId) {
       const featuredCamera = tracks.find(
         (tile) => tile.participantIdentity === featuredParticipantId && tile.source === Track.Source.Camera,
@@ -61,14 +59,15 @@ export class RoomFacade {
       if (featuredCamera) return featuredCamera;
     }
 
+    const screenShare = tracks.find((tile) => tile.source === Track.Source.ScreenShare);
+    if (screenShare) return screenShare;
+
     return tracks.find((tile) => tile.source === Track.Source.Camera) ?? null;
   });
 
-  readonly cameraThumbnails = computed(() => {
+  readonly mediaThumbnails = computed(() => {
     const mainTrack = this.mainStageTrack();
-    return this.videoTracks().filter(
-      (tile) => tile.source === Track.Source.Camera && tile.id !== mainTrack?.id,
-    );
+    return this.videoTracks().filter((tile) => tile.id !== mainTrack?.id);
   });
 
   async createAndJoin(roomId: string, displayName: string): Promise<void> {
@@ -153,13 +152,28 @@ export class RoomFacade {
     const context = this.actionContext();
     if (!context) return;
 
-    await this.runAction(
-      () => this.api.setFeaturedParticipant(
+    if (!this.hasCamera(participantId)) {
+      this.error.set('This participant does not currently have a camera on.');
+      return;
+    }
+
+    this.error.set(null);
+
+    try {
+      await this.api.setFeaturedParticipant(
         { roomId: context.roomId, participantId },
         this.identity.userId,
         context.displayName,
-      ),
-      'Unable to feature this participant.',
+      );
+      this.media.setFeaturedParticipant(participantId);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to feature this participant.'));
+    }
+  }
+
+  hasCamera(participantId: string): boolean {
+    return this.videoTracks().some(
+      (tile) => tile.participantIdentity === participantId && tile.source === Track.Source.Camera,
     );
   }
 
