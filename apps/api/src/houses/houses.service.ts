@@ -216,7 +216,10 @@ export class HousesService {
     const house = await this.getHouseSummary(houseId);
     const roomRole = role === 'admin' ? 'moderator' : 'listener';
     await Promise.all(
-      house.roomIds.map((roomId) => this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName)),
+      house.roomIds.map(async (roomId) => {
+        await this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName);
+        await this.roomsService.syncParticipantRoleIfConnected(roomId, targetUserId, roomRole);
+      }),
     );
 
     return { userId: targetUserId, displayName, role };
@@ -252,7 +255,10 @@ export class HousesService {
   private async applyAdminsToRoom(houseId: string, roomId: string): Promise<void> {
     const admins = (await this.getMembers(houseId)).filter((member) => member.role === 'admin');
     await Promise.all(
-      admins.map((admin) => this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName)),
+      admins.map(async (admin) => {
+        await this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName);
+        await this.roomsService.syncParticipantRoleIfConnected(roomId, admin.userId, 'moderator');
+      }),
     );
   }
 
