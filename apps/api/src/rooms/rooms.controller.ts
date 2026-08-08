@@ -41,14 +41,6 @@ export class RoomsController {
     return this.roomsService.createJoinToken(request, user);
   }
 
-  @Delete(':roomId')
-  async closeRoom(
-    @Param('roomId') roomId: string,
-    @DevUser() user: AuthenticatedUser,
-  ): Promise<void> {
-    await this.roomsService.closeRoom({ roomId }, user);
-  }
-
   @Patch('hand')
   async setRaisedHand(
     @Body() request: RaiseHandDto,
@@ -87,5 +79,13 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
     await this.roomsService.removeParticipant(request, user);
+  }
+
+  @Delete(':roomId')
+  async closeRoom(
+    @Param('roomId') roomId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomsService.closeRoom({ roomId }, user);
   }
 }
