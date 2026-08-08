@@ -1,7 +1,7 @@
 import { Directive, ElementRef, HostListener, inject } from '@angular/core';
 
 @Directive({
-  selector: 'details[liveDiscussionsDismissibleDetails]',
+  selector: 'details, details[liveDiscussionsDismissibleDetails]',
   standalone: true,
 })
 export class DismissibleDetailsDirective {
