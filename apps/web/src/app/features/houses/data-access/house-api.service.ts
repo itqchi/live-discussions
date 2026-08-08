@@ -6,9 +6,11 @@ import type {
   CreateHouseRoomRequest,
   CreateRoomResponse,
   GetHouseResponse,
+  HouseMember,
   HouseSummary,
   JoinHouseRequest,
   JoinHouseResponse,
+  UpdateHouseMemberRoleRequest,
 } from '@live-discussions/contracts';
 import { catchError, firstValueFrom, throwError, type Observable } from 'rxjs';
 import { API_BASE_URL } from '../../../core/api-base-url.token';
@@ -61,6 +63,20 @@ export class HouseApiService {
         headers: this.devHeaders(devUserId, displayName),
       }),
       'Unable to join the house.',
+    );
+  }
+
+  updateMemberRole(
+    houseId: string,
+    request: Omit<UpdateHouseMemberRoleRequest, 'houseId'>,
+    devUserId: string,
+    displayName: string,
+  ): Promise<HouseMember> {
+    return this.toPromise(
+      this.http.patch<HouseMember>(`${this.apiBaseUrl}/houses/${houseId}/members/role`, request, {
+        headers: this.devHeaders(devUserId, displayName),
+      }),
+      'Unable to update the House member role.',
     );
   }
 
