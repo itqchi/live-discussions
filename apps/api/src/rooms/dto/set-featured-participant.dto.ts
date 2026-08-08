@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
 
 export class SetFeaturedParticipantDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -8,7 +8,8 @@ export class SetFeaturedParticipantDto {
   roomId!: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
   @IsString()
   @Length(1, 160)
-  participantId!: string;
+  participantId!: string | null;
 }
