@@ -1,11 +1,9 @@
-<main class="mx-auto max-w-7xl px-6 py-12">
-  <header class="mb-8 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+<main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+  <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
     <div>
-      <a class="mb-4 inline-flex text-sm text-slate-400 hover:text-slate-100" routerLink="/">← Back to Home</a>
+      <a class="mb-3 inline-flex text-sm text-slate-400 hover:text-slate-100" routerLink="/">← Back to Home</a>
       <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
-      <h1 class="mt-1 max-w-3xl text-4xl font-bold leading-none tracking-tight md:text-6xl">
-        {{ roomId }}
-      </h1>
+      <h1 class="mt-1 text-3xl font-bold tracking-tight md:text-5xl">{{ roomId }}</h1>
     </div>
 
     <span
@@ -19,55 +17,74 @@
     </span>
   </header>
 
-  <section class="grid gap-5 lg:grid-cols-[minmax(260px,340px)_1fr]">
-    <aside class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
-      <form class="grid gap-4" [formGroup]="joinForm" (ngSubmit)="join()">
-        <div>
-          <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
-          <h2 class="mt-1 break-all text-xl font-semibold">{{ roomId }}</h2>
+  @if (facade.error()) {
+    <div class="mb-5 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+      {{ facade.error() }}
+    </div>
+  }
+
+  <section class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <aside class="h-fit rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
+        <h2 class="mt-1 break-all text-xl font-semibold">{{ roomId }}</h2>
+      </div>
+
+      <div class="mt-5 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
+        @if (facade.connected() && facade.localCamera(); as localCamera) {
+          <div class="aspect-video">
+            <live-discussions-video-track [track]="localCamera.track" />
+          </div>
+        } @else {
+          <div class="grid aspect-video place-items-center bg-slate-800">
+            <div class="grid size-16 place-items-center rounded-full bg-slate-700 text-xl font-bold">
+              {{ initials() }}
+            </div>
+          </div>
+        }
+
+        <div class="p-4">
+          <p class="text-xs font-bold tracking-[0.15em] text-slate-500">YOUR IDENTITY</p>
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <strong class="truncate">{{ displayName() || 'No display name set' }}</strong>
+            @if (facade.connected()) {
+              <span class="text-xs capitalize text-slate-400">{{ facade.roleLabel() }}</span>
+            }
+          </div>
+          <p class="mt-1 text-xs text-slate-500">Set from Home and read-only while you are in a room.</p>
         </div>
+      </div>
 
-        <label class="grid gap-2 text-sm text-slate-300">
-          Display name
-          <input
-            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
-            formControlName="displayName"
-            placeholder="Your name"
-          />
-        </label>
-
-        @if (joinForm.controls.displayName.touched && joinForm.controls.displayName.invalid) {
-          <p class="text-sm text-red-200">Enter a display name of at most 80 characters.</p>
+      @if (!facade.connected()) {
+        @if (displayName()) {
+          <button
+            class="mt-4 w-full rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+            type="button"
+            (click)="join()"
+            [disabled]="facade.joining()"
+          >
+            {{ facade.joining() ? 'Joining…' : 'Join room' }}
+          </button>
+        } @else {
+          <a class="mt-4 block rounded-xl border border-slate-600 px-4 py-3 text-center font-semibold" routerLink="/">
+            Set your name on Home
+          </a>
         }
-
-        <p class="text-xs text-slate-400">Participant roles and publishing permissions are assigned by the server.</p>
-
-        <button
-          class="rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-          type="submit"
-          [disabled]="facade.joining() || facade.connected()"
-        >
-          {{ facade.joining() ? 'Joining…' : 'Join room' }}
-        </button>
-
-        @if (facade.error()) {
-          <p class="text-sm text-red-200">{{ facade.error() }}</p>
-        }
-      </form>
+      }
     </aside>
 
-    <section class="grid min-h-[520px] gap-5 xl:grid-cols-[1fr_300px]">
-      <section class="flex min-h-[520px] flex-col gap-5 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 backdrop-blur">
-        <div class="flex items-center justify-between gap-5">
+    <section class="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section class="flex min-h-[620px] min-w-0 flex-col rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur sm:p-6">
+        <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE ROOM</p>
-            <h2 class="mt-1 text-xl font-semibold">{{ roomId }}</h2>
+            <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">LIVE ROOM</p>
+            <h2 class="mt-1 text-xl font-semibold">Stage</h2>
           </div>
-          <span class="capitalize text-slate-300">{{ facade.roleLabel() }}</span>
+          <span class="text-sm text-slate-400">{{ facade.stageParticipants().length }} on stage</span>
         </div>
 
         @if (facade.audioPlaybackBlocked()) {
-          <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-700/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+          <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-700/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
             <span>Your browser blocked room audio until you interact with the page.</span>
             <button class="rounded-xl border border-amber-500/70 px-3 py-2 font-semibold" type="button" (click)="facade.resumeAudio()">
               Enable room audio
@@ -75,29 +92,64 @@
           </div>
         }
 
-        @if (facade.videoTracks().length) {
-          <div class="grid flex-1 content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            @for (tile of facade.videoTracks(); track tile.id) {
-              <article class="relative aspect-video min-h-44 overflow-hidden rounded-2xl bg-slate-900">
+        <div class="relative grid min-h-72 flex-1 place-items-center overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 sm:min-h-96">
+          @if (facade.featuredCamera(); as featuredCamera) {
+            <live-discussions-video-track [track]="featuredCamera.track" />
+            <div class="absolute bottom-4 left-4 rounded-full bg-slate-950/80 px-4 py-2 text-sm backdrop-blur">
+              <strong>{{ featuredCamera.participantName }}</strong>
+              <span class="ml-2 text-slate-400">Featured</span>
+            </div>
+          } @else if (facade.featuredParticipant(); as featuredPerson) {
+            <div class="grid place-items-center gap-4 text-center">
+              <div class="grid size-28 place-items-center rounded-full bg-slate-800 text-3xl font-bold">
+                {{ initialsFor(featuredPerson.name) }}
+              </div>
+              <div>
+                <strong class="text-xl">{{ featuredPerson.name }}</strong>
+                <p class="mt-1 text-sm capitalize text-slate-400">{{ featuredPerson.role }} · camera off</p>
+              </div>
+            </div>
+          } @else {
+            <div class="max-w-sm px-6 text-center">
+              <div class="mx-auto grid size-20 place-items-center rounded-full border border-slate-700 bg-slate-900 text-2xl">★</div>
+              <h3 class="mt-4 text-lg font-semibold">No featured speaker yet</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-400">
+                The owner or a moderator can use the ⋯ menu in People to place someone in the main view.
+              </p>
+            </div>
+          }
+        </div>
+
+        @if (facade.cameraThumbnails().length) {
+          <div class="mt-4 flex gap-3 overflow-x-auto pb-2">
+            @for (tile of facade.cameraThumbnails(); track tile.id) {
+              <article class="relative aspect-video w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 sm:w-40">
                 <live-discussions-video-track [track]="tile.track" />
-                <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs backdrop-blur">
-                  <strong>{{ tile.participantName }}</strong>
-                  @if (tile.isLocal) { <span class="text-slate-400">You</span> }
+                <div class="absolute inset-x-0 bottom-0 truncate bg-slate-950/75 px-2 py-1.5 text-xs backdrop-blur">
+                  {{ tile.participantName }}
                 </div>
               </article>
             }
           </div>
-        } @else {
-          <div class="grid min-h-72 flex-1 place-content-center place-items-center gap-3 text-center">
-            <div class="grid size-28 place-items-center rounded-full border border-slate-500 bg-slate-700 text-3xl font-bold">
-              {{ initials() }}
-            </div>
-            <strong>{{ displayName() || 'You' }}</strong>
-            <small class="text-slate-400">{{ facade.connected() ? 'You are in the room' : 'Join to start listening' }}</small>
+        }
+
+        @if (facade.stageParticipants().length) {
+          <div class="mt-4 flex gap-3 overflow-x-auto pb-1">
+            @for (person of facade.stageParticipants(); track person.identity) {
+              <div class="flex min-w-36 shrink-0 items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/50 p-3">
+                <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
+                  {{ initialsFor(person.name) }}
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold">{{ person.name }}</p>
+                  <p class="text-xs capitalize text-slate-500">{{ person.role }}</p>
+                </div>
+              </div>
+            }
           </div>
         }
 
-        <div class="flex flex-wrap justify-center gap-2">
+        <div class="mt-5 flex flex-wrap justify-center gap-2 border-t border-slate-800 pt-5">
           <button
             class="rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-40"
             type="button"
@@ -146,51 +198,131 @@
         </div>
       </section>
 
-      <aside class="rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">PEOPLE</p>
-            <h2 class="mt-1 text-lg font-semibold">{{ facade.participants().length }} in room</h2>
+      <aside class="flex max-h-[760px] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/80 backdrop-blur">
+        <div class="border-b border-slate-800 p-5">
+          <p class="text-xs font-bold tracking-[0.2em] text-slate-400">PEOPLE</p>
+          <div class="mt-1 flex items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold">{{ facade.participants().length }} connected</h2>
+            <span class="text-xs text-slate-500">Scroll</span>
           </div>
         </div>
 
-        <div class="grid gap-3">
-          @for (person of facade.participants(); track person.identity) {
-            <article class="rounded-2xl border border-slate-700 bg-slate-950/50 p-3">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <strong class="truncate">{{ person.name }}</strong>
-                    @if (person.isLocal) { <span class="text-xs text-slate-400">You</span> }
-                    @if (person.raisedHand) { <span title="Hand raised">✋</span> }
+        <div class="min-h-0 flex-1 overflow-y-auto p-3">
+          <section>
+            <div class="sticky top-0 z-10 flex items-center justify-between bg-slate-900/95 px-2 py-2 backdrop-blur">
+              <h3 class="text-xs font-bold tracking-[0.16em] text-emerald-300">ON STAGE</h3>
+              <span class="text-xs text-slate-500">{{ facade.stageParticipants().length }}</span>
+            </div>
+
+            <div class="grid gap-1">
+              @for (person of facade.stageParticipants(); track person.identity) {
+                <div class="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-slate-800/70">
+                  <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
+                    {{ initialsFor(person.name) }}
                   </div>
-                  <p class="mt-1 text-xs capitalize text-slate-400">{{ person.role }}</p>
+
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <strong class="truncate text-sm">{{ person.name }}</strong>
+                      @if (person.isLocal) { <span class="text-[10px] text-slate-500">You</span> }
+                      @if (person.raisedHand) { <span class="text-xs" title="Hand raised">✋</span> }
+                    </div>
+                    <p class="text-xs capitalize text-slate-500">{{ person.role }}</p>
+                  </div>
+
+                  @if (facade.canModerate()) {
+                    <details class="relative shrink-0">
+                      <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
+                      <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                        <button
+                          class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800"
+                          type="button"
+                          (click)="facade.featureParticipant(person.identity)"
+                        >
+                          Feature in main view
+                        </button>
+
+                        @if (!person.isLocal && person.role === 'speaker') {
+                          <button
+                            class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800"
+                            type="button"
+                            (click)="facade.moveToAudience(person.identity)"
+                          >
+                            Move to audience
+                          </button>
+                        }
+
+                        @if (!person.isLocal && person.role !== 'owner') {
+                          <button
+                            class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60"
+                            type="button"
+                            (click)="facade.removeParticipant(person.identity)"
+                          >
+                            Remove from room
+                          </button>
+                        }
+                      </div>
+                    </details>
+                  }
                 </div>
-              </div>
-
-              @if (facade.canModerate() && !person.isLocal && person.role === 'listener') {
-                <button
-                  class="mt-3 w-full rounded-xl border border-emerald-700 px-3 py-2 text-sm text-emerald-100"
-                  type="button"
-                  (click)="facade.promoteToSpeaker(person.identity)"
-                >
-                  Invite to speak
-                </button>
+              } @empty {
+                <p class="px-2 py-4 text-sm text-slate-500">Nobody is on stage yet.</p>
               }
+            </div>
+          </section>
 
-              @if (facade.canModerate() && !person.isLocal && person.role === 'speaker') {
-                <button
-                  class="mt-3 w-full rounded-xl border border-slate-600 px-3 py-2 text-sm text-slate-200"
-                  type="button"
-                  (click)="facade.moveToAudience(person.identity)"
-                >
-                  Move to audience
-                </button>
+          <section class="mt-5">
+            <div class="sticky top-0 z-10 flex items-center justify-between bg-slate-900/95 px-2 py-2 backdrop-blur">
+              <h3 class="text-xs font-bold tracking-[0.16em] text-slate-400">AUDIENCE</h3>
+              <span class="text-xs text-slate-500">{{ facade.audienceParticipants().length }}</span>
+            </div>
+
+            <div class="grid gap-1">
+              @for (person of facade.audienceParticipants(); track person.identity) {
+                <div class="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-slate-800/70">
+                  <div class="grid size-9 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
+                    {{ initialsFor(person.name) }}
+                  </div>
+
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <strong class="truncate text-sm">{{ person.name }}</strong>
+                      @if (person.isLocal) { <span class="text-[10px] text-slate-500">You</span> }
+                      @if (person.raisedHand) { <span class="text-xs" title="Hand raised">✋</span> }
+                    </div>
+                    <p class="text-xs text-slate-500">Listener</p>
+                  </div>
+
+                  @if (facade.canModerate()) {
+                    <details class="relative shrink-0">
+                      <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
+                      <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                        <button
+                          class="w-full rounded-lg px-3 py-2 text-left text-sm text-emerald-200 hover:bg-emerald-950/50"
+                          type="button"
+                          (click)="facade.promoteToSpeaker(person.identity)"
+                        >
+                          Invite to speak
+                        </button>
+
+                        @if (!person.isLocal) {
+                          <button
+                            class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60"
+                            type="button"
+                            (click)="facade.removeParticipant(person.identity)"
+                          >
+                            Remove from room
+                          </button>
+                        }
+                      </div>
+                    </details>
+                  }
+                </div>
+              } @empty {
+                <p class="px-2 py-4 text-sm text-slate-500">Nobody is in the audience.</p>
               }
-            </article>
-          } @empty {
-            <p class="text-sm text-slate-400">Join the room to see participants.</p>
-          }
+            </div>
+          </section>
         </div>
       </aside>
     </section>
