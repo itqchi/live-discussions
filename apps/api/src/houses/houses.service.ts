@@ -27,6 +27,7 @@ interface HouseRecord {
   memberNames: Map<string, string>;
   roomIds: string[];
 }
+
 interface HouseSummaryRow {
   id: string;
   name: string;
@@ -48,17 +49,24 @@ export class HousesService {
 
   async listHouses(): Promise<HouseSummary[]> {
     if (!this.database.configured) {
-      return [...this.houses.values()].map((house) => this.toSummary(house)).sort((a, b) => a.name.localeCompare(b.name));
+      return [...this.houses.values()]
+        .map((house) => this.toSummary(house))
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
+
     const result = await this.database.query<HouseSummaryRow>(
       `SELECT house.id, house.name, house.description,
          COUNT(DISTINCT member.user_id)::text AS member_count,
          COUNT(DISTINCT house_room.room_id)::text AS room_count,
-         COALESCE(ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL), ARRAY[]::text[]) AS room_ids
+         COALESCE(
+           ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL),
+           ARRAY[]::text[]
+         ) AS room_ids
        FROM discussion_house house
        LEFT JOIN house_member member ON member.house_id = house.id
        LEFT JOIN house_room ON house_room.house_id = house.id
-       GROUP BY house.id, house.name, house.description ORDER BY house.name ASC`,
+       GROUP BY house.id, house.name, house.description
+       ORDER BY house.name ASC`,
     );
     return result.rows.map((row) => this.summaryFromRow(row));
   }
@@ -66,8 +74,16 @@ export class HousesService {
   async getHouse(houseId: string, user: AuthenticatedUser): Promise<GetHouseResponse> {
     const house = await this.getHouseSummary(houseId);
     const rooms = await this.existingRooms(house.roomIds);
-    if (!this.database.configured) this.getHouseRecord(houseId).roomIds = rooms.map((room) => room.id);
-    const [role, members] = await Promise.all([this.getMemberRole(houseId, user.userId), this.getMembers(houseId)]);
+
+    if (!this.database.configured) {
+      this.getHouseRecord(houseId).roomIds = rooms.map((room) => room.id);
+    }
+
+    const [role, members] = await Promise.all([
+      this.getMemberRole(houseId, user.userId),
+      this.getMembers(houseId),
+    ]);
+
     const detail: HouseDetail = {
       ...house,
       roomIds: rooms.map((room) => room.id),
@@ -78,8 +94,12 @@ export class HousesService {
     return { house: detail, role };
   }
 
-  async createHouse(request: CreateHouseRequest, owner: AuthenticatedUser): Promise<CreateHouseResponse> {
+  async createHouse(
+    request: CreateHouseRequest,
+    owner: AuthenticatedUser,
+  ): Promise<CreateHouseResponse> {
     const id = randomUUID();
+
     if (!this.database.configured) {
       const house: HouseRecord = {
         id,
@@ -92,16 +112,36 @@ export class HousesService {
       this.houses.set(id, house);
       return { house: this.toSummary(house), role: 'owner' };
     }
+
     await this.database.transaction(async (client) => {
       await client.query(
-        `INSERT INTO app_user (id, display_name) VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+        `INSERT INTO app_user (id, display_name)
+         VALUES ($1, $2)
+         ON CONFLICT (id) DO UPDATE
+         SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
         [owner.userId, owner.displayName],
       );
-      await client.query('INSERT INTO discussion_house (id, name, description) VALUES ($1, $2, $3)', [id, request.name, request.description]);
-      await client.query('INSERT INTO house_member (house_id, user_id, role) VALUES ($1, $2, $3)', [id, owner.userId, 'owner']);
+      await client.query(
+        'INSERT INTO discussion_house (id, name, description) VALUES ($1, $2, $3)',
+        [id, request.name, request.description],
+      );
+      await client.query(
+        'INSERT INTO house_member (house_id, user_id, role) VALUES ($1, $2, $3)',
+        [id, owner.userId, 'owner'],
+      );
     });
-    return { house: { id, name: request.name, description: request.description, memberCount: 1, roomCount: 0, roomIds: [] }, role: 'owner' };
+
+    return {
+      house: {
+        id,
+        name: request.name,
+        description: request.description,
+        memberCount: 1,
+        roomCount: 0,
+        roomIds: [],
+      },
+      role: 'owner',
+    };
   }
 
   async joinHouse(request: JoinHouseRequest, user: AuthenticatedUser): Promise<JoinHouseResponse> {
@@ -112,28 +152,51 @@ export class HousesService {
       house.memberNames.set(user.userId, user.displayName);
       return { house: this.toSummary(house), role };
     }
+
     const role = await this.database.transaction<HouseMemberRole>(async (client) => {
       const house = await client.query('SELECT id FROM discussion_house WHERE id = $1', [request.houseId]);
       if (!house.rows[0]) throw new NotFoundException('House not found.');
+
       await client.query(
-        `INSERT INTO app_user (id, display_name) VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+        `INSERT INTO app_user (id, display_name)
+         VALUES ($1, $2)
+         ON CONFLICT (id) DO UPDATE
+         SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
         [user.userId, user.displayName],
       );
-      const existing = await client.query<{ role: HouseMemberRole }>('SELECT role FROM house_member WHERE house_id = $1 AND user_id = $2', [request.houseId, user.userId]);
+
+      const existing = await client.query<{ role: HouseMemberRole }>(
+        'SELECT role FROM house_member WHERE house_id = $1 AND user_id = $2',
+        [request.houseId, user.userId],
+      );
       if (existing.rows[0]) return existing.rows[0].role;
-      await client.query('INSERT INTO house_member (house_id, user_id, role) VALUES ($1, $2, $3)', [request.houseId, user.userId, 'member']);
+
+      await client.query(
+        'INSERT INTO house_member (house_id, user_id, role) VALUES ($1, $2, $3)',
+        [request.houseId, user.userId, 'member'],
+      );
       return 'member';
     });
+
     return { house: await this.getHouseSummary(request.houseId), role };
   }
 
-  async updateMemberRole(houseId: string, targetUserId: string, role: Extract<HouseMemberRole, 'admin' | 'member'>, actor: AuthenticatedUser): Promise<HouseMember> {
+  async updateMemberRole(
+    houseId: string,
+    targetUserId: string,
+    role: Extract<HouseMemberRole, 'admin' | 'member'>,
+    actor: AuthenticatedUser,
+  ): Promise<HouseMember> {
     const actorRole = await this.getMemberRole(houseId, actor.userId);
-    if (actorRole !== 'owner') throw new ForbiddenException('Only the House owner can manage House admins.');
+    if (actorRole !== 'owner') {
+      throw new ForbiddenException('Only the House owner can manage House admins.');
+    }
+
     const targetRole = await this.getMemberRole(houseId, targetUserId);
     if (!targetRole) throw new NotFoundException('House member not found.');
-    if (targetRole === 'owner') throw new ForbiddenException('The House owner role cannot be changed here.');
+    if (targetRole === 'owner') {
+      throw new ForbiddenException('The House owner role cannot be changed here.');
+    }
 
     let displayName = targetUserId;
     if (!this.database.configured) {
@@ -142,8 +205,13 @@ export class HousesService {
       displayName = house.memberNames.get(targetUserId) ?? targetUserId;
     } else {
       const result = await this.database.query<{ display_name: string }>(
-        `UPDATE house_member member SET role = $3 FROM app_user app
-         WHERE member.house_id = $1 AND member.user_id = $2 AND app.id = member.user_id RETURNING app.display_name`,
+        `UPDATE house_member member
+         SET role = $3
+         FROM app_user app
+         WHERE member.house_id = $1
+           AND member.user_id = $2
+           AND app.id = member.user_id
+         RETURNING app.display_name`,
         [houseId, targetUserId, role],
       );
       if (!result.rows[0]) throw new NotFoundException('House member not found.');
@@ -152,14 +220,21 @@ export class HousesService {
 
     const house = await this.getHouseSummary(houseId);
     const roomRole = role === 'admin' ? 'moderator' : 'listener';
-    await Promise.all(house.roomIds.map(async (roomId) => {
-      await this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName);
-      await this.roomsService.syncParticipantRoleIfConnected(roomId, targetUserId, roomRole);
-    }));
+    await Promise.all(
+      house.roomIds.map(async (roomId) => {
+        await this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName);
+        await this.roomsService.syncParticipantRoleIfConnected(roomId, targetUserId, roomRole);
+      }),
+    );
+
     return { userId: targetUserId, displayName, role };
   }
 
-  async createRoom(houseId: string, request: CreateHouseRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
+  async createRoom(
+    houseId: string,
+    request: CreateHouseRoomRequest,
+    user: AuthenticatedUser,
+  ): Promise<CreateRoomResponse> {
     const role = await this.getMemberRole(houseId, user.userId);
     if (role !== 'owner' && role !== 'admin') {
       throw new ForbiddenException('Only the House owner or an admin can create rooms in this House.');
@@ -182,78 +257,149 @@ export class HousesService {
     };
     const response = await this.roomsService.createRoom(request, roomOwner);
     const roomId = response.room.id;
-    if (!this.database.configured) this.getHouseRecord(houseId).roomIds.push(roomId);
-    else await this.database.query('INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)', [houseId, roomId]);
 
-    await this.applyAdminsToRoom(houseId, roomId);
-    return response;
+    try {
+      if (!this.database.configured) {
+        this.getHouseRecord(houseId).roomIds.push(roomId);
+      } else {
+        await this.database.query(
+          'INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)',
+          [houseId, roomId],
+        );
+      }
+
+      await this.applyAdminsToRoom(houseId, roomId);
+      return response;
+    } catch (error) {
+      if (!this.database.configured) {
+        const record = this.getHouseRecord(houseId);
+        record.roomIds = record.roomIds.filter((id) => id !== roomId);
+      }
+
+      try {
+        await this.roomMemberships.deleteRoom(roomId);
+      } catch {
+        // Preserve the original linking/synchronization failure.
+      }
+      throw error;
+    }
   }
 
   async closeRoom(houseId: string, roomId: string, user: AuthenticatedUser): Promise<void> {
     const role = await this.getMemberRole(houseId, user.userId);
-    if (role !== 'owner' && role !== 'admin') throw new ForbiddenException('Only the House owner or an admin can close rooms.');
+    if (role !== 'owner' && role !== 'admin') {
+      throw new ForbiddenException('Only the House owner or an admin can close rooms.');
+    }
+
     const house = await this.getHouseSummary(houseId);
-    if (!house.roomIds.includes(roomId)) throw new NotFoundException('Room does not belong to this House.');
+    if (!house.roomIds.includes(roomId)) {
+      throw new NotFoundException('Room does not belong to this House.');
+    }
+
     await this.roomsService.closeRoom({ roomId }, user);
-    if (!this.database.configured) this.getHouseRecord(houseId).roomIds = this.getHouseRecord(houseId).roomIds.filter((id) => id !== roomId);
+    if (!this.database.configured) {
+      const record = this.getHouseRecord(houseId);
+      record.roomIds = record.roomIds.filter((id) => id !== roomId);
+    }
   }
 
   private async existingRooms(roomIds: string[]): Promise<RoomSummary[]> {
-    const results = await Promise.allSettled(roomIds.map((roomId) => this.roomMemberships.getRoomSummary(roomId)));
-    return results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+    const rooms = await Promise.all(
+      roomIds.map(async (roomId): Promise<RoomSummary | null> => {
+        try {
+          return await this.roomMemberships.getRoomSummary(roomId);
+        } catch (error) {
+          if (error instanceof NotFoundException) return null;
+          throw error;
+        }
+      }),
+    );
+
+    return rooms.filter((room): room is RoomSummary => room !== null);
   }
 
   private async applyAdminsToRoom(houseId: string, roomId: string): Promise<void> {
     const admins = (await this.getMembers(houseId)).filter((member) => member.role === 'admin');
-    await Promise.all(admins.map(async (admin) => {
-      await this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName);
-      await this.roomsService.syncParticipantRoleIfConnected(roomId, admin.userId, 'moderator');
-    }));
+    await Promise.all(
+      admins.map(async (admin) => {
+        await this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName);
+        await this.roomsService.syncParticipantRoleIfConnected(roomId, admin.userId, 'moderator');
+      }),
+    );
   }
 
   private async getMembers(houseId: string): Promise<HouseMember[]> {
     if (!this.database.configured) {
       const house = this.getHouseRecord(houseId);
       return [...house.members.entries()]
-        .map(([userId, role]) => ({ userId, displayName: house.memberNames.get(userId) ?? userId, role }))
+        .map(([userId, role]) => ({
+          userId,
+          displayName: house.memberNames.get(userId) ?? userId,
+          role,
+        }))
         .sort((a, b) => this.memberSort(a, b));
     }
-    const result = await this.database.query<{ user_id: string; display_name: string; role: HouseMemberRole }>(
+
+    const result = await this.database.query<{
+      user_id: string;
+      display_name: string;
+      role: HouseMemberRole;
+    }>(
       `SELECT member.user_id, app.display_name, member.role
-       FROM house_member member JOIN app_user app ON app.id = member.user_id
+       FROM house_member member
+       JOIN app_user app ON app.id = member.user_id
        WHERE member.house_id = $1
-       ORDER BY CASE member.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, app.display_name ASC`,
+       ORDER BY CASE member.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+                app.display_name ASC`,
       [houseId],
     );
-    return result.rows.map((row) => ({ userId: row.user_id, displayName: row.display_name, role: row.role }));
+
+    return result.rows.map((row) => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+      role: row.role,
+    }));
   }
 
   private memberSort(left: HouseMember, right: HouseMember): number {
-    const rank = (role: HouseMemberRole) => role === 'owner' ? 0 : role === 'admin' ? 1 : 2;
+    const rank = (role: HouseMemberRole): number =>
+      role === 'owner' ? 0 : role === 'admin' ? 1 : 2;
     return rank(left.role) - rank(right.role) || left.displayName.localeCompare(right.displayName);
   }
 
   private async getHouseSummary(houseId: string): Promise<HouseSummary> {
     if (!this.database.configured) return this.toSummary(this.getHouseRecord(houseId));
+
     const result = await this.database.query<HouseSummaryRow>(
       `SELECT house.id, house.name, house.description,
          COUNT(DISTINCT member.user_id)::text AS member_count,
          COUNT(DISTINCT house_room.room_id)::text AS room_count,
-         COALESCE(ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL), ARRAY[]::text[]) AS room_ids
+         COALESCE(
+           ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL),
+           ARRAY[]::text[]
+         ) AS room_ids
        FROM discussion_house house
        LEFT JOIN house_member member ON member.house_id = house.id
        LEFT JOIN house_room ON house_room.house_id = house.id
-       WHERE house.id = $1 GROUP BY house.id, house.name, house.description`,
+       WHERE house.id = $1
+       GROUP BY house.id, house.name, house.description`,
       [houseId],
     );
+
     const row = result.rows[0];
     if (!row) throw new NotFoundException('House not found.');
     return this.summaryFromRow(row);
   }
 
   private async getMemberRole(houseId: string, userId: string): Promise<HouseMemberRole | null> {
-    if (!this.database.configured) return this.getHouseRecord(houseId).members.get(userId) ?? null;
-    const result = await this.database.query<{ role: HouseMemberRole }>('SELECT role FROM house_member WHERE house_id = $1 AND user_id = $2', [houseId, userId]);
+    if (!this.database.configured) {
+      return this.getHouseRecord(houseId).members.get(userId) ?? null;
+    }
+
+    const result = await this.database.query<{ role: HouseMemberRole }>(
+      'SELECT role FROM house_member WHERE house_id = $1 AND user_id = $2',
+      [houseId, userId],
+    );
     return result.rows[0]?.role ?? null;
   }
 
@@ -264,9 +410,24 @@ export class HousesService {
   }
 
   private toSummary(house: HouseRecord): HouseSummary {
-    return { id: house.id, name: house.name, description: house.description, memberCount: house.members.size, roomCount: house.roomIds.length, roomIds: [...house.roomIds] };
+    return {
+      id: house.id,
+      name: house.name,
+      description: house.description,
+      memberCount: house.members.size,
+      roomCount: house.roomIds.length,
+      roomIds: [...house.roomIds],
+    };
   }
+
   private summaryFromRow(row: HouseSummaryRow): HouseSummary {
-    return { id: row.id, name: row.name, description: row.description, memberCount: Number(row.member_count), roomCount: Number(row.room_count), roomIds: row.room_ids };
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      memberCount: Number(row.member_count),
+      roomCount: Number(row.room_count),
+      roomIds: row.room_ids,
+    };
   }
 }
