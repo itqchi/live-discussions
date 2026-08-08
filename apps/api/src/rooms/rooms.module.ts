@@ -8,5 +8,6 @@ import { RoomsService } from './rooms.service';
   imports: [DatabaseModule],
   controllers: [RoomsController],
   providers: [RoomsService, RoomMembershipService],
+  exports: [RoomsService, RoomMembershipService],
 })
 export class RoomsModule {}
