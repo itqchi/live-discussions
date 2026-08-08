@@ -6,6 +6,7 @@ import type {
   HouseMemberRole,
 } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
+import { roomSlugFromName } from '../../../core/room-route.util';
 import { HouseApiService } from './house-api.service';
 
 @Injectable()
@@ -85,14 +86,14 @@ export class HouseFacade {
     this.error.set(null);
 
     try {
-      const roomId = this.roomIdFromTitle(normalizedTitle);
+      const roomId = roomSlugFromName(normalizedTitle);
       await this.api.createRoom(
         house.id,
         { roomId, title: normalizedTitle },
         this.identity.userId,
         this.displayName(),
       );
-      await this.router.navigate(['/rooms', roomId], { queryParams: { join: '1' } });
+      await this.router.navigate(['/rooms', roomId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create a room in this House.'));
     } finally {
@@ -102,7 +103,7 @@ export class HouseFacade {
 
   joinRoom(roomId: string): Promise<boolean> {
     if (!this.requireDisplayName()) return Promise.resolve(false);
-    return this.router.navigate(['/rooms', roomId], { queryParams: { join: '1' } });
+    return this.router.navigate(['/rooms', roomId]);
   }
 
   goHome(): Promise<boolean> {
@@ -143,18 +144,6 @@ export class HouseFacade {
     if (this.displayName().trim()) return true;
     this.error.set('Enter your display name first.');
     return false;
-  }
-
-  private roomIdFromTitle(title: string): string {
-    const slug = title
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 48) || 'room';
-
-    return `${slug}-${crypto.randomUUID().slice(0, 8)}`;
   }
 
   private errorMessage(error: unknown, fallbackMessage: string): string {
