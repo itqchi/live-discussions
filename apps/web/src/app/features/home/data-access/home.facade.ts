@@ -43,10 +43,15 @@ export class HomeFacade {
     return this.houses().find((house) => house.roomIds.includes(roomId)) ?? null;
   }
 
-  async joinRoom(roomSlug: string): Promise<void> {
+  async joinRoom(roomId: string): Promise<void> {
     if (!this.requireDisplayName()) return;
-    this.navigation.rememberOrigin(roomSlug, '/');
-    await this.router.navigate(['/room', roomSlug]);
+    const room = this.rooms().find((candidate) => candidate.id === roomId);
+    if (!room) {
+      this.error.set('Room not found.');
+      return;
+    }
+    this.navigation.rememberOrigin(room.slug, '/');
+    await this.router.navigate(['/room', room.slug]);
   }
 
   async createRoom(title: string): Promise<void> {
