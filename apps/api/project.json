@@ -5,10 +5,17 @@
   "projectType": "application",
   "targets": {
     "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "nx run api:serve-node",
+        "envFile": ".env",
+        "cwd": "."
+      }
+    },
+    "serve-node": {
       "executor": "@nx/js:node",
       "options": {
-        "buildTarget": "api:build",
-        "runtimeArgs": ["--env-file=.env"]
+        "buildTarget": "api:build"
       }
     },
     "build": {
