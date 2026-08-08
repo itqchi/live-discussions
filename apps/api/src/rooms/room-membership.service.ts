@@ -41,6 +41,43 @@ export class RoomMembershipService {
     }));
   }
 
+  async getRoomSummary(roomId: string): Promise<RoomSummary> {
+    if (!this.database.configured) {
+      const title = this.roomTitles.get(roomId);
+      if (!title) throw new NotFoundException('Room not found.');
+
+      return {
+        id: roomId,
+        title,
+        isLive: true,
+        memberCount: this.rolesByRoom.get(roomId)?.size ?? 0,
+      };
+    }
+
+    const result = await this.database.query<{
+      id: string;
+      title: string;
+      member_count: string;
+    }>(
+      `SELECT room.id, room.title, COUNT(member.user_id)::text AS member_count
+       FROM discussion_room room
+       LEFT JOIN room_member member ON member.room_id = room.id
+       WHERE room.id = $1
+       GROUP BY room.id, room.title`,
+      [roomId],
+    );
+
+    const room = result.rows[0];
+    if (!room) throw new NotFoundException('Room not found.');
+
+    return {
+      id: room.id,
+      title: room.title,
+      isLive: true,
+      memberCount: Number(room.member_count),
+    };
+  }
+
   async createRoom(roomId: string, title: string, owner: AuthenticatedUser): Promise<void> {
     if (!this.database.configured) {
       if (this.roomTitles.has(roomId)) {
