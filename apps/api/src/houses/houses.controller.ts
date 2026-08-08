@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import type {
   AuthenticatedUser,
   CreateHouseResponse,
@@ -66,7 +66,7 @@ export class HousesController {
     return this.housesService.createRoom(houseId, request, user);
   }
 
-  @Patch(':houseId/rooms/:roomId/close')
+  @Delete(':houseId/rooms/:roomId')
   async closeRoom(
     @Param('houseId') houseId: string,
     @Param('roomId') roomId: string,
