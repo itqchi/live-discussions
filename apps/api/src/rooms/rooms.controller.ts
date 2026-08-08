@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Patch, Post } from '@nestjs/common';
 import type {
   CreateRoomResponse,
   JoinRoomResponse,
@@ -9,6 +9,8 @@ import { devIdentityFromHeaders } from '../auth/dev-identity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
+import { RemoveParticipantDto } from './dto/remove-participant.dto';
+import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
 import { RoomsService } from './rooms.service';
 
@@ -45,11 +47,27 @@ export class RoomsController {
     await this.roomsService.setRaisedHand(request, devIdentityFromHeaders(headers));
   }
 
+  @Patch('featured-participant')
+  async setFeaturedParticipant(
+    @Body() request: SetFeaturedParticipantDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<void> {
+    await this.roomsService.setFeaturedParticipant(request, devIdentityFromHeaders(headers));
+  }
+
   @Patch('participants/role')
   updateParticipantRole(
     @Body() request: UpdateParticipantRoleDto,
     @Headers() headers: Record<string, string | string[] | undefined>,
   ): Promise<RoomParticipant> {
     return this.roomsService.updateParticipantRole(request, devIdentityFromHeaders(headers));
+  }
+
+  @Delete('participants')
+  async removeParticipant(
+    @Body() request: RemoveParticipantDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<void> {
+    await this.roomsService.removeParticipant(request, devIdentityFromHeaders(headers));
   }
 }
