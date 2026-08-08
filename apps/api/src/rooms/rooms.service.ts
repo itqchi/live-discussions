@@ -6,6 +6,7 @@ import type {
   CreateRoomResponse,
   JoinRoomRequest,
   JoinRoomResponse,
+  ParticipantRole,
   RaiseHandRequest,
   RemoveParticipantRequest,
   RoomParticipant,
@@ -104,6 +105,28 @@ export class RoomsService {
       request.roomId,
       JSON.stringify({ featuredParticipantId: request.participantId } satisfies LiveRoomMetadata),
     );
+  }
+
+  async syncParticipantRoleIfConnected(
+    roomId: string,
+    userId: string,
+    role: ParticipantRole,
+  ): Promise<void> {
+    const permissions = permissionsForRole(role);
+
+    try {
+      await this.roomServiceClient().updateParticipant(roomId, userId, {
+        metadata: JSON.stringify({ role }),
+        attributes: { raisedHand: 'false' },
+        permission: {
+          canSubscribe: true,
+          canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
+          canPublishData: true,
+        },
+      });
+    } catch {
+      // The role is already persisted. An offline participant will receive it on their next join.
+    }
   }
 
   async removeParticipant(
