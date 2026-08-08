@@ -111,6 +111,7 @@ export class HousesService {
       description: house.description,
       memberCount: house.members.size,
       roomCount: house.roomIds.length,
+      roomIds: [...house.roomIds],
     };
   }
 }
