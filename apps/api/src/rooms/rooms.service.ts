@@ -36,13 +36,14 @@ export class RoomsService {
   }
 
   async createRoom(request: CreateRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
-    await this.memberships.createRoom(request.roomId, request.title, user);
+    const summary = await this.memberships.createRoom(request.roomId, request.title, user);
     const participant = this.toParticipant(user, 'owner');
 
     return {
       room: {
-        id: request.roomId,
-        title: request.title,
+        id: summary.id,
+        slug: summary.slug,
+        title: summary.title,
         isLive: true,
         participants: [participant],
       },
@@ -52,7 +53,8 @@ export class RoomsService {
 
   async createJoinToken(request: JoinRoomRequest, user: AuthenticatedUser): Promise<JoinRoomResponse> {
     const { livekitUrl, apiKey, apiSecret } = this.liveKitConfig();
-    const role = await this.memberships.resolveRole(request.roomId, user);
+    const summary = await this.memberships.getRoomSummary(request.roomId);
+    const role = await this.memberships.resolveRole(summary.id, user);
     const participant = this.toParticipant(user, role);
 
     const token = new AccessToken(apiKey, apiSecret, {
@@ -68,7 +70,7 @@ export class RoomsService {
 
     token.addGrant({
       roomJoin: true,
-      room: request.roomId,
+      room: summary.id,
       canSubscribe: true,
       canPublish: this.canPublish(participant),
       canPublishData: true,
@@ -78,34 +80,34 @@ export class RoomsService {
       livekitUrl,
       token: await token.toJwt(),
       participant,
+      roomId: summary.id,
+      roomSlug: summary.slug,
     };
   }
 
   async closeRoom(request: CloseRoomRequest, actor: AuthenticatedUser): Promise<void> {
-    await this.assertCanModerate(request.roomId, actor.userId);
-    await this.memberships.closeRoom(request.roomId);
-
-    try {
-      await this.roomServiceClient().deleteRoom(request.roomId);
-    } catch {
-      // The persistent room is closed even when no LiveKit room is currently active.
-    }
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    await this.assertCanModerate(roomId, actor.userId);
+    await this.deleteLiveKitRoomIfPresent(roomId);
+    await this.memberships.deleteRoom(roomId);
   }
 
   async setRaisedHand(request: RaiseHandRequest, user: AuthenticatedUser): Promise<void> {
-    const role = await this.memberships.getRole(request.roomId, user.userId);
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    const role = await this.memberships.getRole(roomId, user.userId);
     if (!role) throw new ForbiddenException('You are not a member of this room.');
 
-    await this.roomServiceClient().updateParticipant(request.roomId, user.userId, {
+    await this.roomServiceClient().updateParticipant(roomId, user.userId, {
       attributes: { raisedHand: request.raised ? 'true' : 'false' },
     });
   }
 
   async setStagePresence(request: SetStagePresenceRequest, user: AuthenticatedUser): Promise<void> {
-    const role = await this.memberships.getRole(request.roomId, user.userId);
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    const role = await this.memberships.getRole(roomId, user.userId);
     if (!role) throw new ForbiddenException('You are not a member of this room.');
 
-    await this.roomServiceClient().updateParticipant(request.roomId, user.userId, {
+    await this.roomServiceClient().updateParticipant(roomId, user.userId, {
       attributes: { onStage: request.onStage ? 'true' : 'false' },
     });
   }
@@ -114,30 +116,32 @@ export class RoomsService {
     request: SetFeaturedParticipantRequest,
     actor: AuthenticatedUser,
   ): Promise<void> {
-    await this.assertCanModerate(request.roomId, actor.userId);
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    await this.assertCanModerate(roomId, actor.userId);
     const roomService = this.roomServiceClient();
 
     if (!request.participantId) {
-      await roomService.updateRoomMetadata(request.roomId, JSON.stringify({} satisfies LiveRoomMetadata));
+      await roomService.updateRoomMetadata(roomId, JSON.stringify({} satisfies LiveRoomMetadata));
       return;
     }
 
-    const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
+    const targetRole = await this.memberships.getRole(roomId, request.participantId);
     if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
 
-    await roomService.getParticipant(request.roomId, request.participantId);
+    await roomService.getParticipant(roomId, request.participantId);
     await roomService.updateRoomMetadata(
-      request.roomId,
+      roomId,
       JSON.stringify({ featuredParticipantId: request.participantId } satisfies LiveRoomMetadata),
     );
   }
 
   async syncParticipantRoleIfConnected(
-    roomId: string,
+    roomIdentifier: string,
     userId: string,
     role: ParticipantRole,
   ): Promise<void> {
     const permissions = permissionsForRole(role);
+    const roomId = await this.memberships.resolveRoomId(roomIdentifier);
 
     try {
       await this.roomServiceClient().updateParticipant(roomId, userId, {
@@ -150,7 +154,7 @@ export class RoomsService {
         },
       });
     } catch {
-      // The role is already persisted. An offline participant will receive it on their next join.
+      // The role is persisted. An offline participant receives it on their next join.
     }
   }
 
@@ -158,13 +162,14 @@ export class RoomsService {
     request: RemoveParticipantRequest,
     actor: AuthenticatedUser,
   ): Promise<void> {
-    const actorRole = await this.assertCanModerate(request.roomId, actor.userId);
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    const actorRole = await this.assertCanModerate(roomId, actor.userId);
 
     if (request.participantId === actor.userId) {
       throw new ForbiddenException('Use Leave to exit the room yourself.');
     }
 
-    const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
+    const targetRole = await this.memberships.getRole(roomId, request.participantId);
     if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
     if (targetRole === 'owner') throw new ForbiddenException('The room owner cannot be removed.');
     if (actorRole === 'moderator' && targetRole === 'moderator') {
@@ -172,32 +177,33 @@ export class RoomsService {
     }
 
     const roomService = this.roomServiceClient();
-    await roomService.removeParticipant(request.roomId, request.participantId);
-    await this.clearFeaturedParticipantIfMatches(roomService, request.roomId, request.participantId);
+    await roomService.removeParticipant(roomId, request.participantId);
+    await this.clearFeaturedParticipantIfMatches(roomService, roomId, request.participantId);
   }
 
   async updateParticipantRole(
     request: UpdateParticipantRoleRequest,
     actor: AuthenticatedUser,
   ): Promise<RoomParticipant> {
-    const actorRole = await this.assertCanModerate(request.roomId, actor.userId);
+    const roomId = await this.memberships.resolveRoomId(request.roomId);
+    const actorRole = await this.assertCanModerate(roomId, actor.userId);
 
     if (request.role === 'owner' && actorRole !== 'owner') {
       throw new ForbiddenException('Only the owner can assign the owner role.');
     }
 
-    const targetRole = await this.memberships.getRole(request.roomId, request.participantId);
+    const targetRole = await this.memberships.getRole(roomId, request.participantId);
     if (!targetRole) throw new ForbiddenException('Participant is not a room member.');
     if (targetRole === 'owner' && actorRole !== 'owner') {
       throw new ForbiddenException('Moderators cannot change the owner role.');
     }
 
-    await this.memberships.setRole(request.roomId, request.participantId, request.role);
+    await this.memberships.setRole(roomId, request.participantId, request.role);
     const permissions = permissionsForRole(request.role);
     const roomService = this.roomServiceClient();
     const onStage = request.role !== 'listener';
 
-    const info = await roomService.updateParticipant(request.roomId, request.participantId, {
+    const info = await roomService.updateParticipant(roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
       attributes: {
         raisedHand: 'false',
@@ -225,8 +231,17 @@ export class RoomsService {
     if (role !== 'owner' && role !== 'moderator') {
       throw new ForbiddenException('Only owners and moderators can perform this action.');
     }
-
     return role;
+  }
+
+  private async deleteLiveKitRoomIfPresent(roomId: string): Promise<void> {
+    const roomService = this.roomServiceClient();
+    try {
+      await roomService.deleteRoom(roomId);
+    } catch (error) {
+      const rooms = await roomService.listRooms([roomId]);
+      if (rooms.length > 0) throw error;
+    }
   }
 
   private async clearFeaturedParticipantIfMatches(
@@ -244,7 +259,6 @@ export class RoomsService {
 
   private parseRoomMetadata(metadata: string | undefined): LiveRoomMetadata {
     if (!metadata) return {};
-
     try {
       const parsed = JSON.parse(metadata) as LiveRoomMetadata;
       return typeof parsed === 'object' && parsed !== null ? parsed : {};
@@ -295,16 +309,12 @@ export class RoomsService {
     apiSecret: string | undefined,
   ): string[] {
     const invalidFields: string[] = [];
-
     if (!livekitUrl) invalidFields.push('LIVEKIT_URL (missing)');
     else if (livekitUrl.includes('your-project.livekit.cloud')) invalidFields.push('LIVEKIT_URL (placeholder)');
-
     if (!apiKey) invalidFields.push('LIVEKIT_API_KEY (missing)');
     else if (apiKey === 'replace-me') invalidFields.push('LIVEKIT_API_KEY (placeholder)');
-
     if (!apiSecret) invalidFields.push('LIVEKIT_API_SECRET (missing)');
     else if (apiSecret === 'replace-me') invalidFields.push('LIVEKIT_API_SECRET (placeholder)');
-
     return invalidFields;
   }
 }
