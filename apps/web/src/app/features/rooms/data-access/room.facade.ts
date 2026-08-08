@@ -1,6 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
-import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService } from './room-media.service';
@@ -13,16 +12,14 @@ export class RoomFacade {
 
   readonly connected = this.media.connected.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
-  readonly cameraEnabled = this.media.cameraEnabled.asReadonly();
-  readonly screenSharing = this.media.screenSharing.asReadonly();
   readonly audioPlaybackBlocked = this.media.audioPlaybackBlocked.asReadonly();
-  readonly videoTracks = this.media.videoTracks.asReadonly();
   readonly participants = this.media.participants.asReadonly();
-  readonly featuredParticipantId = this.media.featuredParticipantId.asReadonly();
+  readonly comments = this.media.comments.asReadonly();
   readonly displayName = this.identity.displayName;
 
   readonly joining = signal(false);
   readonly creating = signal(false);
+  readonly sendingComment = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
 
@@ -32,38 +29,9 @@ export class RoomFacade {
   readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
   readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
   readonly canPublishAudio = computed(() => this.currentRole() !== 'listener');
-  readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
-  readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
   readonly canModerate = computed(() => this.currentRole() === 'owner' || this.currentRole() === 'moderator');
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
-
-  readonly localCamera = computed(() =>
-    this.videoTracks().find((tile) => tile.isLocal && tile.source === Track.Source.Camera) ?? null,
-  );
-
-  readonly featuredParticipant = computed(() => {
-    const participantId = this.featuredParticipantId();
-    return participantId
-      ? this.participants().find((participant) => participant.identity === participantId) ?? null
-      : null;
-  });
-
-  readonly featuredCamera = computed(() => {
-    const participantId = this.featuredParticipantId();
-    return participantId
-      ? this.videoTracks().find(
-          (tile) => tile.participantIdentity === participantId && tile.source === Track.Source.Camera,
-        ) ?? null
-      : null;
-  });
-
-  readonly cameraThumbnails = computed(() => {
-    const featuredParticipantId = this.featuredParticipantId();
-    return this.videoTracks().filter(
-      (tile) => tile.source === Track.Source.Camera && tile.participantIdentity !== featuredParticipantId,
-    );
-  });
 
   readonly stageParticipants = computed(() =>
     this.participants().filter((participant) => participant.role !== 'listener'),
@@ -119,6 +87,24 @@ export class RoomFacade {
     }
   }
 
+  async sendComment(text: string): Promise<boolean> {
+    const normalizedText = text.trim();
+    if (!normalizedText || !this.connected()) return false;
+
+    this.sendingComment.set(true);
+    this.error.set(null);
+
+    try {
+      await this.media.sendComment(normalizedText);
+      return true;
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to send comment.'));
+      return false;
+    } finally {
+      this.sendingComment.set(false);
+    }
+  }
+
   async toggleRaisedHand(): Promise<void> {
     const context = this.actionContext();
     if (!context) return;
@@ -130,20 +116,6 @@ export class RoomFacade {
         context.displayName,
       ),
       'Unable to update your hand state.',
-    );
-  }
-
-  async featureParticipant(participantId: string): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
-
-    await this.runAction(
-      () => this.api.setFeaturedParticipant(
-        { roomId: context.roomId, participantId },
-        this.identity.userId,
-        context.displayName,
-      ),
-      'Unable to feature this participant.',
     );
   }
 
@@ -170,28 +142,14 @@ export class RoomFacade {
   }
 
   async toggleMicrophone(): Promise<void> {
-    await this.runMediaAction(
+    await this.runAction(
       () => this.media.setMicrophone(!this.microphoneEnabled()),
       'Unable to change microphone state.',
     );
   }
 
-  async toggleCamera(): Promise<void> {
-    await this.runMediaAction(
-      () => this.media.setCamera(!this.cameraEnabled()),
-      'Unable to change camera state.',
-    );
-  }
-
-  async toggleScreenShare(): Promise<void> {
-    await this.runMediaAction(
-      () => this.media.setScreenShare(!this.screenSharing()),
-      'Unable to change screen sharing state.',
-    );
-  }
-
   async resumeAudio(): Promise<void> {
-    await this.runMediaAction(() => this.media.resumeAudio(), 'Unable to start room audio.');
+    await this.runAction(() => this.media.resumeAudio(), 'Unable to start room audio.');
   }
 
   leave(): void {
@@ -226,10 +184,6 @@ export class RoomFacade {
     if (roomId && displayName) return true;
     this.error.set('Choose your display name on Home before joining a room.');
     return false;
-  }
-
-  private async runMediaAction(action: () => Promise<void>, fallbackMessage: string): Promise<void> {
-    await this.runAction(action, fallbackMessage);
   }
 
   private async runAction<T>(action: () => Promise<T>, fallbackMessage: string): Promise<void> {
