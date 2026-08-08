@@ -66,12 +66,11 @@ export class RoomFacade {
     return participantId ? this.participants().find((participant) => participant.identity === participantId) ?? null : null;
   });
 
-  readonly featuredCamera = computed(() => {
+  readonly featuredVisualTrack = computed(() => {
     const participantId = this.effectiveFeaturedParticipantId();
-    return participantId ? this.cameraFor(participantId) : null;
+    return participantId ? this.visualTrackFor(participantId) : null;
   });
 
-  readonly screenShareTrack = computed(() => this.videoTracks().find((tile) => tile.source === Track.Source.ScreenShare) ?? null);
   readonly secondaryStageParticipants = computed(() => {
     const featuredId = this.effectiveFeaturedParticipantId();
     return this.stageParticipants().filter((participant) => participant.identity !== featuredId);
@@ -164,6 +163,13 @@ export class RoomFacade {
 
   stageReactionFor(participantId: string): string | null { return this.stageReactions()[participantId]?.emoji ?? null; }
 
+  visualTrackFor(participantId: string): VideoTile | null {
+    const tracks = this.videoTracks().filter((tile) => tile.participantIdentity === participantId);
+    return tracks.find((tile) => tile.source === Track.Source.ScreenShare)
+      ?? tracks.find((tile) => tile.source === Track.Source.Camera)
+      ?? null;
+  }
+
   async setSelfOnStage(onStage: boolean): Promise<void> {
     const context = this.actionContext();
     if (!context || !this.connected()) return;
@@ -203,10 +209,6 @@ export class RoomFacade {
   }
 
   isFeatured(participantId: string): boolean { return this.effectiveFeaturedParticipantId() === participantId; }
-
-  cameraFor(participantId: string): VideoTile | null {
-    return this.videoTracks().find((tile) => tile.participantIdentity === participantId && tile.source === Track.Source.Camera) ?? null;
-  }
 
   async promoteToSpeaker(participantId: string): Promise<void> { await this.updateRole(participantId, 'speaker'); }
   async moveToAudience(participantId: string): Promise<void> { await this.updateRole(participantId, 'listener'); }
