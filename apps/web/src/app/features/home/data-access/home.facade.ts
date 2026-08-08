@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { HouseSummary, RoomSummary } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
+import { roomSlugFromName } from '../../../core/room-route.util';
 import { HouseApiService } from '../../houses/data-access/house-api.service';
 import { RoomApiService } from '../../rooms/data-access/room-api.service';
 
@@ -48,7 +49,7 @@ export class HomeFacade {
 
   async joinRoom(roomId: string): Promise<void> {
     if (!this.requireDisplayName()) return;
-    await this.router.navigate(['/rooms', roomId], { queryParams: { join: '1' } });
+    await this.router.navigate(['/rooms', roomId]);
   }
 
   async createRoom(title: string): Promise<void> {
@@ -62,13 +63,13 @@ export class HomeFacade {
     this.error.set(null);
 
     try {
-      const roomId = this.roomIdFromTitle(normalizedTitle);
+      const roomId = roomSlugFromName(normalizedTitle);
       await this.roomsApi.createRoom(
         { roomId, title: normalizedTitle },
         this.identity.userId,
         this.displayName(),
       );
-      await this.router.navigate(['/rooms', roomId], { queryParams: { join: '1' } });
+      await this.router.navigate(['/rooms', roomId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to create the room.'));
     } finally {
@@ -124,18 +125,6 @@ export class HomeFacade {
     if (this.displayName().trim()) return true;
     this.error.set('Enter your display name first.');
     return false;
-  }
-
-  private roomIdFromTitle(title: string): string {
-    const slug = title
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 48) || 'room';
-
-    return `${slug}-${crypto.randomUUID().slice(0, 8)}`;
   }
 
   private errorMessage(error: unknown, fallbackMessage: string): string {
