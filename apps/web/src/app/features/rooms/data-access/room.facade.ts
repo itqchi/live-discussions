@@ -1,6 +1,11 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
+import type {
+  JoinRoomRequest,
+  JoinRoomResponse,
+  ModeratedParticipantRole,
+  ParticipantRole,
+} from '@live-discussions/contracts';
 import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomNavigationService } from '../../../core/room-navigation.service';
@@ -29,14 +34,12 @@ export class RoomFacade {
   readonly displayName = this.identity.displayName;
 
   readonly joining = signal(false);
-  readonly creating = signal(false);
   readonly sendingComment = signal(false);
   readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
 
   private readonly roomId = signal<string | null>(null);
-  private readonly joinedDisplayName = signal<string | null>(null);
 
   readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
   readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
@@ -56,14 +59,18 @@ export class RoomFacade {
   readonly effectiveFeaturedParticipantId = computed(() => {
     const explicit = this.featuredParticipantId();
     if (explicit && this.participants().some((participant) => participant.identity === explicit)) return explicit;
+
     const owner = this.ownerParticipant();
     if (owner?.onStage) return owner.identity;
+
     return this.stageParticipants()[0]?.identity ?? null;
   });
 
   readonly featuredParticipant = computed(() => {
     const participantId = this.effectiveFeaturedParticipantId();
-    return participantId ? this.participants().find((participant) => participant.identity === participantId) ?? null : null;
+    return participantId
+      ? this.participants().find((participant) => participant.identity === participantId) ?? null
+      : null;
   });
 
   readonly featuredVisualTrack = computed(() => {
@@ -82,54 +89,46 @@ export class RoomFacade {
     });
   }
 
-  async createAndJoin(roomId: string, displayName: string): Promise<void> {
-    const normalizedRoomId = roomId.trim();
-    const normalizedDisplayName = displayName.trim();
-    if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
-    this.creating.set(true);
-    this.error.set(null);
-    try {
-      this.identity.setDisplayName(normalizedDisplayName);
-      await this.api.createRoom({ roomId: normalizedRoomId, title: normalizedRoomId }, this.identity.userId, normalizedDisplayName);
-      await this.join(normalizedRoomId, normalizedDisplayName);
-    } catch (error) {
-      this.error.set(this.errorMessage(error, 'Unable to create the room.'));
-    } finally { this.creating.set(false); }
-  }
-
   async join(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
     const normalizedDisplayName = displayName.trim();
     if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
+
     this.joining.set(true);
     this.error.set(null);
     const request: JoinRoomRequest = { roomId: normalizedRoomId };
+
     try {
       this.returningToOrigin = false;
+      this.identity.setDisplayName(normalizedDisplayName);
       this.roomId.set(normalizedRoomId);
-      this.joinedDisplayName.set(normalizedDisplayName);
-      const session = await this.api.joinRoom(request, this.identity.userId, normalizedDisplayName);
+      const session = await this.api.joinRoom(request);
       await this.media.connect(session);
       this.participant.set(session.participant);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the room.'));
-    } finally { this.joining.set(false); }
+    } finally {
+      this.joining.set(false);
+    }
   }
 
   async closeRoom(): Promise<boolean> {
-    const context = this.actionContext();
-    if (!context || !this.canCloseRoom()) return false;
+    const roomId = this.roomId();
+    if (!roomId || !this.canCloseRoom()) return false;
+
     this.closingRoom.set(true);
     this.error.set(null);
     try {
-      await this.api.closeRoom({ roomId: context.roomId }, this.identity.userId, context.displayName);
+      await this.api.closeRoom({ roomId });
       await this.media.disconnect();
       await this.returnToOrigin();
       return true;
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to close the room.'));
       return false;
-    } finally { this.closingRoom.set(false); }
+    } finally {
+      this.closingRoom.set(false);
+    }
   }
 
   async leave(): Promise<void> {
@@ -140,6 +139,7 @@ export class RoomFacade {
   async sendComment(text: string, replyToId: string | null = null): Promise<boolean> {
     const normalizedText = text.trim();
     if (!normalizedText || !this.connected()) return false;
+
     this.sendingComment.set(true);
     this.error.set(null);
     try {
@@ -148,22 +148,32 @@ export class RoomFacade {
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to send comment.'));
       return false;
-    } finally { this.sendingComment.set(false); }
+    } finally {
+      this.sendingComment.set(false);
+    }
   }
 
   toggleCommentReaction(commentId: string, emoji: string): Promise<void> {
-    return this.runAction(() => this.media.toggleCommentReaction(commentId, emoji), 'Unable to react to this comment.');
+    return this.runAction(
+      () => this.media.toggleCommentReaction(commentId, emoji),
+      'Unable to react to this comment.',
+    );
   }
 
   sendStageReaction(emoji: string): Promise<void> {
-    return this.runAction(() => this.media.sendStageReaction(emoji), 'Unable to send reaction.');
+    return this.runAction(
+      () => this.media.sendStageReaction(emoji),
+      'Unable to send reaction.',
+    );
   }
 
   commentById(commentId: string | null): RoomComment | null {
     return commentId ? this.comments().find((comment) => comment.id === commentId) ?? null : null;
   }
 
-  stageReactionFor(participantId: string): string | null { return this.stageReactions()[participantId]?.emoji ?? null; }
+  stageReactionFor(participantId: string): string | null {
+    return this.stageReactions()[participantId]?.emoji ?? null;
+  }
 
   visualTrackFor(participantId: string): VideoTile | null {
     const tracks = this.videoTracks().filter((tile) => tile.participantIdentity === participantId);
@@ -173,98 +183,128 @@ export class RoomFacade {
   }
 
   async setSelfOnStage(onStage: boolean): Promise<void> {
-    const context = this.actionContext();
-    if (!context || !this.connected()) return;
+    const roomId = this.roomId();
+    if (!roomId || !this.connected()) return;
+
     await this.runAction(
-      () => this.api.setStagePresence({ roomId: context.roomId, onStage }, this.identity.userId, context.displayName),
+      () => this.api.setStagePresence({ roomId, onStage }),
       'Unable to update your stage position.',
     );
   }
 
   async toggleRaisedHand(): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
+    const roomId = this.roomId();
+    if (!roomId) return;
+
     await this.runAction(
-      () => this.api.setRaisedHand({ roomId: context.roomId, raised: !this.raisedHand() }, this.identity.userId, context.displayName),
+      () => this.api.setRaisedHand({ roomId, raised: !this.raisedHand() }),
       'Unable to update your hand state.',
     );
   }
 
   async featureParticipant(participantId: string): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
+    const roomId = this.roomId();
+    if (!roomId) return;
+
     this.error.set(null);
     try {
-      await this.api.setFeaturedParticipant({ roomId: context.roomId, participantId }, this.identity.userId, context.displayName);
+      await this.api.setFeaturedParticipant({ roomId, participantId });
       this.media.setFeaturedParticipant(participantId);
-    } catch (error) { this.error.set(this.errorMessage(error, 'Unable to feature this participant.')); }
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to feature this participant.'));
+    }
   }
 
   async returnOwnerToFeaturedSpot(): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
+    const roomId = this.roomId();
+    if (!roomId) return;
+
     this.error.set(null);
     try {
-      await this.api.setFeaturedParticipant({ roomId: context.roomId, participantId: null }, this.identity.userId, context.displayName);
+      await this.api.setFeaturedParticipant({ roomId, participantId: null });
       this.media.setFeaturedParticipant(null);
-    } catch (error) { this.error.set(this.errorMessage(error, 'Unable to restore the default featured spot.')); }
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to restore the default featured spot.'));
+    }
   }
 
-  isFeatured(participantId: string): boolean { return this.effectiveFeaturedParticipantId() === participantId; }
+  isFeatured(participantId: string): boolean {
+    return this.effectiveFeaturedParticipantId() === participantId;
+  }
 
-  async promoteToSpeaker(participantId: string): Promise<void> { await this.updateRole(participantId, 'speaker'); }
-  async moveToAudience(participantId: string): Promise<void> { await this.updateRole(participantId, 'listener'); }
+  async promoteToSpeaker(participantId: string): Promise<void> {
+    await this.updateRole(participantId, 'speaker');
+  }
+
+  async moveToAudience(participantId: string): Promise<void> {
+    await this.updateRole(participantId, 'listener');
+  }
 
   async removeParticipant(participantId: string): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
+    const roomId = this.roomId();
+    if (!roomId) return;
+
     await this.runAction(
-      () => this.api.removeParticipant({ roomId: context.roomId, participantId }, this.identity.userId, context.displayName),
+      () => this.api.removeParticipant({ roomId, participantId }),
       'Unable to remove participant from the room.',
     );
   }
 
   async toggleMicrophone(): Promise<void> {
-    await this.runAction(() => this.media.setMicrophone(!this.microphoneEnabled()), 'Unable to change microphone state.');
+    await this.runAction(
+      () => this.media.setMicrophone(!this.microphoneEnabled()),
+      'Unable to change microphone state.',
+    );
   }
+
   async toggleCamera(): Promise<void> {
-    await this.runAction(() => this.media.setCamera(!this.cameraEnabled()), 'Unable to change camera state.');
+    await this.runAction(
+      () => this.media.setCamera(!this.cameraEnabled()),
+      'Unable to change camera state.',
+    );
   }
+
   async toggleScreenShare(): Promise<void> {
-    await this.runAction(() => this.media.setScreenShare(!this.screenSharing()), 'Unable to change screen sharing state.');
+    await this.runAction(
+      () => this.media.setScreenShare(!this.screenSharing()),
+      'Unable to change screen sharing state.',
+    );
   }
-  async resumeAudio(): Promise<void> { await this.runAction(() => this.media.resumeAudio(), 'Unable to start room audio.'); }
+
+  async resumeAudio(): Promise<void> {
+    await this.runAction(
+      () => this.media.resumeAudio(),
+      'Unable to start room audio.',
+    );
+  }
 
   private async returnToOrigin(): Promise<void> {
     if (this.returningToOrigin) return;
+
     const roomSlug = this.roomId();
     if (!roomSlug) return;
+
     this.returningToOrigin = true;
     const origin = this.navigation.consumeOrigin(roomSlug);
     this.participant.set(null);
     this.error.set(null);
+
     try {
       await this.router.navigateByUrl(origin);
     } finally {
       this.roomId.set(null);
-      this.joinedDisplayName.set(null);
       this.returningToOrigin = false;
     }
   }
 
-  private async updateRole(participantId: string, role: ParticipantRole): Promise<void> {
-    const context = this.actionContext();
-    if (!context) return;
+  private async updateRole(participantId: string, role: ModeratedParticipantRole): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId) return;
+
     await this.runAction(
-      () => this.api.updateParticipantRole({ roomId: context.roomId, participantId, role }, this.identity.userId, context.displayName),
+      () => this.api.updateParticipantRole({ roomId, participantId, role }),
       'Unable to update participant role.',
     );
-  }
-
-  private actionContext(): { roomId: string; displayName: string } | null {
-    const roomId = this.roomId();
-    const displayName = this.joinedDisplayName();
-    return roomId && displayName ? { roomId, displayName } : null;
   }
 
   private validateIdentity(roomId: string, displayName: string): boolean {
@@ -275,7 +315,11 @@ export class RoomFacade {
 
   private async runAction<T>(action: () => Promise<T>, fallbackMessage: string): Promise<void> {
     this.error.set(null);
-    try { await action(); } catch (error) { this.error.set(this.errorMessage(error, fallbackMessage)); }
+    try {
+      await action();
+    } catch (error) {
+      this.error.set(this.errorMessage(error, fallbackMessage));
+    }
   }
 
   private errorMessage(error: unknown, fallbackMessage: string): string {
