@@ -3,7 +3,7 @@ import type { JoinRoomRequest, JoinRoomResponse, ParticipantRole } from '@live-d
 import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomApiService } from './room-api.service';
-import { RoomMediaService } from './room-media.service';
+import { RoomMediaService, type VideoTile } from './room-media.service';
 
 @Injectable()
 export class RoomFacade {
@@ -40,35 +40,42 @@ export class RoomFacade {
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
 
+  readonly ownerParticipant = computed(() =>
+    this.participants().find((participant) => participant.role === 'owner') ?? null,
+  );
+
+  readonly effectiveFeaturedParticipantId = computed(() =>
+    this.featuredParticipantId() ?? this.ownerParticipant()?.identity ?? null,
+  );
+
+  readonly featuredParticipant = computed(() => {
+    const participantId = this.effectiveFeaturedParticipantId();
+    return participantId
+      ? this.participants().find((participant) => participant.identity === participantId) ?? null
+      : null;
+  });
+
+  readonly featuredCamera = computed(() => {
+    const participantId = this.effectiveFeaturedParticipantId();
+    return participantId ? this.cameraFor(participantId) : null;
+  });
+
+  readonly screenShareTrack = computed(() =>
+    this.videoTracks().find((tile) => tile.source === Track.Source.ScreenShare) ?? null,
+  );
+
   readonly stageParticipants = computed(() =>
     this.participants().filter((participant) => participant.role !== 'listener'),
   );
 
+  readonly secondaryStageParticipants = computed(() => {
+    const featuredId = this.effectiveFeaturedParticipantId();
+    return this.stageParticipants().filter((participant) => participant.identity !== featuredId);
+  });
+
   readonly audienceParticipants = computed(() =>
     this.participants().filter((participant) => participant.role === 'listener'),
   );
-
-  readonly mainStageTrack = computed(() => {
-    const tracks = this.videoTracks();
-    const featuredParticipantId = this.featuredParticipantId();
-
-    if (featuredParticipantId) {
-      const featuredCamera = tracks.find(
-        (tile) => tile.participantIdentity === featuredParticipantId && tile.source === Track.Source.Camera,
-      );
-      if (featuredCamera) return featuredCamera;
-    }
-
-    const screenShare = tracks.find((tile) => tile.source === Track.Source.ScreenShare);
-    if (screenShare) return screenShare;
-
-    return tracks.find((tile) => tile.source === Track.Source.Camera) ?? null;
-  });
-
-  readonly mediaThumbnails = computed(() => {
-    const mainTrack = this.mainStageTrack();
-    return this.videoTracks().filter((tile) => tile.id !== mainTrack?.id);
-  });
 
   async createAndJoin(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
@@ -152,13 +159,7 @@ export class RoomFacade {
     const context = this.actionContext();
     if (!context) return;
 
-    if (!this.hasCamera(participantId)) {
-      this.error.set('This participant does not currently have a camera on.');
-      return;
-    }
-
     this.error.set(null);
-
     try {
       await this.api.setFeaturedParticipant(
         { roomId: context.roomId, participantId },
@@ -171,10 +172,32 @@ export class RoomFacade {
     }
   }
 
-  hasCamera(participantId: string): boolean {
-    return this.videoTracks().some(
+  async returnOwnerToFeaturedSpot(): Promise<void> {
+    const context = this.actionContext();
+    if (!context) return;
+
+    this.error.set(null);
+    try {
+      await this.api.setFeaturedParticipant(
+        { roomId: context.roomId, participantId: null },
+        this.identity.userId,
+        context.displayName,
+      );
+      const ownerId = this.ownerParticipant()?.identity;
+      if (ownerId) this.media.setFeaturedParticipant(ownerId);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to restore the owner to the featured spot.'));
+    }
+  }
+
+  isFeatured(participantId: string): boolean {
+    return this.effectiveFeaturedParticipantId() === participantId;
+  }
+
+  cameraFor(participantId: string): VideoTile | null {
+    return this.videoTracks().find(
       (tile) => tile.participantIdentity === participantId && tile.source === Track.Source.Camera,
-    );
+    ) ?? null;
   }
 
   async promoteToSpeaker(participantId: string): Promise<void> {
