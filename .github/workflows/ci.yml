@@ -31,6 +31,31 @@ jobs:
       - name: Verify migration runner
         run: npm run migrate:api
 
+      - name: Smoke test compiled API
+        env:
+          DATABASE_DRIVER: memory
+          PORT: 3100
+        run: |
+          npm run start:api:production > /tmp/live-discussions-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+
+          READY=0
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --show-error http://127.0.0.1:3100/health > /dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            cat /tmp/live-discussions-api.log
+            exit 1
+          fi
+
+          curl --fail --silent --show-error http://127.0.0.1:3100/rooms > /dev/null
+
       - name: Verify hosted runtime config
         env:
           API_BASE_URL: https://api.example.invalid
