@@ -104,6 +104,7 @@ export class RoomPageComponent implements OnInit {
       isLocked: this.facade.roomLocked(),
     });
     this.settingsOpen.set(true);
+    if (this.facade.canModerate()) void this.facade.loadBannedUsers();
   }
 
   saveSettings(): void {
