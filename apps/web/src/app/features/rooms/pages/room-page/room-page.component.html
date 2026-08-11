@@ -228,7 +228,12 @@
     <aside class="max-h-[760px] min-h-[620px] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
       <div class="mb-4">
         <p class="text-xs font-bold tracking-[0.2em] text-slate-400">PEOPLE</p>
-        <p class="mt-1 text-sm text-slate-500">{{ facade.participants().length }} connected</p>
+        <p class="mt-1 text-sm text-slate-500">
+          {{ facade.participants().length }} connected
+          @if (raisedHands().length > 0) {
+            · <span class="font-semibold text-amber-300">{{ raisedHands().length }} raised</span>
+          }
+        </p>
       </div>
 
       @for (participant of facade.stageParticipants(); track participant.identity) {
@@ -257,15 +262,48 @@
         </div>
       }
 
-      @if (facade.audienceParticipants().length > 0) {
+      @if (raisedHands().length > 0) {
+        <p class="mb-2 mt-5 text-xs font-bold tracking-[0.16em] text-amber-300">RAISED HANDS</p>
+        @for (participant of raisedHands(); track participant.identity) {
+          <div class="mb-2 flex items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-950/15 p-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-900/70 font-bold text-amber-100">{{ initialsFor(participant.name) }}</div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
+              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak</p>
+            </div>
+
+            @if (facade.canModerate() && !participant.isLocal && participant.role !== 'moderator' && participant.role !== 'owner') {
+              <button class="shrink-0 rounded-lg bg-amber-200 px-2.5 py-2 text-xs font-semibold text-slate-950" type="button" (click)="facade.promoteToSpeaker(participant.identity)">Invite</button>
+            }
+
+            @if (facade.canModerate() && !participant.isLocal) {
+              <details liveDiscussionsDismissibleDetails class="relative shrink-0">
+                <summary class="cursor-pointer list-none px-1 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
+                <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                  @if (facade.featuredParticipantId() === participant.identity) {
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                  } @else {
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                  }
+                  @if (participant.role !== 'moderator' && participant.role !== 'owner') {
+                    <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
+                  }
+                </div>
+              </details>
+            }
+          </div>
+        }
+      }
+
+      @if (audienceWithoutRaisedHands().length > 0) {
         <p class="mb-2 mt-5 text-xs font-bold tracking-[0.16em] text-slate-500">AUDIENCE</p>
       }
-      @for (participant of facade.audienceParticipants(); track participant.identity) {
+      @for (participant of audienceWithoutRaisedHands(); track participant.identity) {
         <div class="mb-2 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
