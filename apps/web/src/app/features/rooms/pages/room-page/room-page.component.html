@@ -344,7 +344,7 @@
                         @if (!person.isLocal && person.role === 'speaker') {
                           <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.moveToAudience(person.identity)">Move to audience</button>
                         }
-                        @if (!person.isLocal && person.role !== 'owner') {
+                        @if (!person.isLocal && person.role !== 'owner' && person.role !== 'moderator') {
                           <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
                         }
                       }
@@ -391,8 +391,10 @@
                         } @else {
                           <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.featureParticipant(person.identity)">Feature on stage</button>
                         }
-                        @if (!person.isLocal) {
+                        @if (!person.isLocal && person.role === 'listener') {
                           <button class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(person.identity)">Invite to speak</button>
+                        }
+                        @if (!person.isLocal && person.role !== 'owner' && person.role !== 'moderator') {
                           <button class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60" type="button" (click)="facade.removeParticipant(person.identity)">Remove from room</button>
                         }
                       }
