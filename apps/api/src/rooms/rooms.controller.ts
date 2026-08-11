@@ -13,6 +13,7 @@ import type {
   AuthenticatedUser,
   CreateRoomResponse,
   JoinRoomResponse,
+  RoomBannedUser,
   RoomCommentHistoryItem,
   RoomParticipant,
   RoomSummary,
@@ -73,6 +74,34 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<RoomSummary> {
     return this.roomSettings.updateRoom(roomId, request, user);
+  }
+
+  @Get(':roomId/bans')
+  listBannedUsers(
+    @Param('roomId') roomId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<RoomBannedUser[]> {
+    return this.roomSettings.listBannedUsers(roomId, user);
+  }
+
+  @Patch(':roomId/bans/:participantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async banParticipant(
+    @Param('roomId') roomId: string,
+    @Param('participantId') participantId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomSettings.banParticipant(roomId, participantId, user);
+  }
+
+  @Delete(':roomId/bans/:participantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unbanParticipant(
+    @Param('roomId') roomId: string,
+    @Param('participantId') participantId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomSettings.unbanParticipant(roomId, participantId, user);
   }
 
   @Get(':roomId/comments')
