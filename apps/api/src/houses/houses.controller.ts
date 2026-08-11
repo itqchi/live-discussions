@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import type {
   AuthenticatedUser,
   CreateHouseResponse,
@@ -48,13 +58,14 @@ export class HousesController {
     return this.housesService.joinHouse(request, user);
   }
 
-  @Patch(':houseId/members/role')
+  @Patch(':houseId/members/:userId/role')
   updateMemberRole(
     @Param('houseId') houseId: string,
+    @Param('userId') userId: string,
     @Body() request: UpdateHouseMemberRoleDto,
     @DevUser() user: AuthenticatedUser,
   ): Promise<HouseMember> {
-    return this.housesService.updateMemberRole(houseId, request.userId, request.role, user);
+    return this.housesService.updateMemberRole(houseId, userId, request.role, user);
   }
 
   @Post(':houseId/rooms')
@@ -67,6 +78,7 @@ export class HousesController {
   }
 
   @Delete(':houseId/rooms/:roomId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async closeRoom(
     @Param('houseId') houseId: string,
     @Param('roomId') roomId: string,
