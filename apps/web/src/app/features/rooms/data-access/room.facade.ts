@@ -5,6 +5,7 @@ import type {
   JoinRoomResponse,
   ModeratedParticipantRole,
   ParticipantRole,
+  RoomCommentHistoryItem,
   RoomReactionEmoji,
   UpdateRoomSettingsRequest,
 } from '@live-discussions/contracts';
@@ -47,6 +48,7 @@ export class RoomFacade {
   readonly roomSlug = signal<string | null>(null);
   readonly roomDescription = signal('');
   readonly roomLocked = signal(false);
+  readonly pinnedCommentIds = signal<ReadonlySet<string>>(new Set());
 
   private readonly roomId = signal<string | null>(null);
 
@@ -75,6 +77,10 @@ export class RoomFacade {
   readonly canCloseRoom = this.canModerate;
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
+  readonly pinnedComments = computed(() => {
+    const pinnedIds = this.pinnedCommentIds();
+    return this.comments().filter((comment) => pinnedIds.has(comment.id));
+  });
 
   readonly ownerParticipant = computed(() =>
     this.participants().find((participant) => participant.role === 'owner') ?? null,
@@ -171,7 +177,10 @@ export class RoomFacade {
 
       try {
         const history = await this.api.listComments(session.roomId);
-        if (attempt === this.joinAttempt) this.media.hydrateComments(history);
+        if (attempt === this.joinAttempt) {
+          this.media.hydrateComments(history);
+          this.applyPinnedHistory(history);
+        }
       } catch {
         if (attempt === this.joinAttempt) {
           this.error.set('Room connected, but shared comment history could not be loaded.');
@@ -301,6 +310,29 @@ export class RoomFacade {
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to react to this comment.'));
     }
+  }
+
+  async toggleCommentPinned(commentId: string): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canModerate()) return;
+
+    const pinned = !this.pinnedCommentIds().has(commentId);
+    this.error.set(null);
+    try {
+      await this.api.setCommentPinned(roomId, commentId, { pinned });
+      this.pinnedCommentIds.update((current) => {
+        const next = new Set(current);
+        if (pinned) next.add(commentId);
+        else next.delete(commentId);
+        return next;
+      });
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to update the pinned comment.'));
+    }
+  }
+
+  isCommentPinned(commentId: string): boolean {
+    return this.pinnedCommentIds().has(commentId);
   }
 
   sendStageReaction(emoji: RoomReactionEmoji): Promise<void> {
@@ -457,6 +489,12 @@ export class RoomFacade {
     );
   }
 
+  private applyPinnedHistory(history: RoomCommentHistoryItem[]): void {
+    this.pinnedCommentIds.set(new Set(
+      history.filter((comment) => comment.pinned).map((comment) => comment.id),
+    ));
+  }
+
   private applyRoomSummary(room: {
     slug: string;
     title: string;
@@ -475,6 +513,7 @@ export class RoomFacade {
     this.roomSlug.set(null);
     this.roomDescription.set('');
     this.roomLocked.set(false);
+    this.pinnedCommentIds.set(new Set());
     this.roomId.set(null);
   }
 
