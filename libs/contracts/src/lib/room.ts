@@ -51,8 +51,8 @@ export interface CreateRoomRequest {
 }
 
 export interface CreateRoomResponse {
+  /** Creation is actor-neutral; joining the room has its own session/participant response. */
   room: DiscussionRoom;
-  participant: RoomParticipant;
 }
 
 export interface JoinRoomRequest {
