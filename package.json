@@ -19,7 +19,7 @@
     "build:api": "nx build api",
     "build": "nx run-many -t build -p contracts web api",
     "typecheck:mobile": "nx typecheck mobile",
-    "check:scripts": "node --check scripts/serve-api.mjs && node --check scripts/start-api-production.mjs && node --check scripts/write-web-runtime-config.mjs && node --check scripts/migrate-api.mjs && node --check scripts/check-mobile-native.mjs",
+    "check:scripts": "node --check scripts/serve-api.mjs && node --check scripts/start-api-production.mjs && node --check scripts/write-web-runtime-config.mjs && node --check scripts/migrate-api.mjs && node --check scripts/check-mobile-native.mjs && node --check react-native.config.js",
     "check": "npm run check:scripts && npm run build && npm run typecheck:mobile",
     "start:api:production": "node scripts/start-api-production.mjs",
     "mobile": "nx start mobile",
