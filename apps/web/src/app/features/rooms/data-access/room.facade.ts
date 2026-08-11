@@ -21,6 +21,7 @@ export class RoomFacade {
   private readonly navigation = inject(RoomNavigationService);
   private readonly router = inject(Router);
   private returningToOrigin = false;
+  private joinAttempt = 0;
 
   readonly connected = this.media.connected.asReadonly();
   readonly connectionStatus = this.media.connectionStatus.asReadonly();
@@ -115,6 +116,7 @@ export class RoomFacade {
     if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
     if (this.joining() || this.connected()) return;
 
+    const attempt = ++this.joinAttempt;
     this.joining.set(true);
     this.error.set(null);
     const request: JoinRoomRequest = { roomId: normalizedRoomId };
@@ -124,29 +126,50 @@ export class RoomFacade {
       this.identity.setDisplayName(normalizedDisplayName);
       this.roomId.set(normalizedRoomId);
       const session = await this.api.joinRoom(request);
+      if (attempt !== this.joinAttempt) return;
+
       await this.media.connect(session);
+      if (attempt !== this.joinAttempt) {
+        await this.disconnectMediaSafely();
+        return;
+      }
+
       this.participant.set(session.participant);
       this.roomTitle.set(session.roomTitle);
       this.roomSlug.set(session.roomSlug);
 
       try {
         const history = await this.api.listComments(session.roomId);
-        this.media.hydrateComments(history);
+        if (attempt === this.joinAttempt) this.media.hydrateComments(history);
       } catch {
-        this.error.set('Room connected, but shared comment history could not be loaded.');
+        if (attempt === this.joinAttempt) {
+          this.error.set('Room connected, but shared comment history could not be loaded.');
+        }
       }
     } catch (error) {
-      this.participant.set(null);
-      this.roomTitle.set(null);
-      this.roomSlug.set(null);
-      try {
-        await this.media.disconnect();
-      } catch {
-        // disconnect() performs its local cleanup in a finally block.
-      }
+      if (attempt !== this.joinAttempt) return;
+      this.resetRoomSession();
+      await this.disconnectMediaSafely();
       this.error.set(this.errorMessage(error, 'Unable to join the room.'));
     } finally {
-      this.joining.set(false);
+      if (attempt === this.joinAttempt) this.joining.set(false);
+    }
+  }
+
+  async switchRoom(roomId: string, displayName: string): Promise<void> {
+    const normalizedRoomId = roomId.trim();
+    const normalizedDisplayName = displayName.trim();
+    if (this.roomId() === normalizedRoomId && (this.connected() || this.joining())) return;
+
+    ++this.joinAttempt;
+    this.joining.set(false);
+    this.returningToOrigin = false;
+    await this.disconnectMediaSafely();
+    this.resetRoomSession();
+    this.error.set(null);
+
+    if (normalizedRoomId && normalizedDisplayName) {
+      await this.join(normalizedRoomId, normalizedDisplayName);
     }
   }
 
@@ -165,11 +188,8 @@ export class RoomFacade {
       return false;
     }
 
-    try {
-      await this.media.disconnect();
-    } catch {
-      // The server already deleted the room and local media cleanup has run.
-    }
+    ++this.joinAttempt;
+    await this.disconnectMediaSafely();
 
     try {
       await this.returnToOrigin();
@@ -180,13 +200,10 @@ export class RoomFacade {
   }
 
   async leave(): Promise<void> {
-    try {
-      await this.media.disconnect();
-    } catch {
-      // Local media cleanup is guaranteed by RoomMediaService.disconnect().
-    } finally {
-      await this.returnToOrigin();
-    }
+    ++this.joinAttempt;
+    this.joining.set(false);
+    await this.disconnectMediaSafely();
+    await this.returnToOrigin();
   }
 
   async sendComment(text: string, replyToId: string | null = null): Promise<boolean> {
@@ -368,10 +385,7 @@ export class RoomFacade {
       }
 
       this.navigation.clearOrigin(roomSlug);
-      this.participant.set(null);
-      this.roomTitle.set(null);
-      this.roomSlug.set(null);
-      this.roomId.set(null);
+      this.resetRoomSession();
       this.error.set(null);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to leave this room. Please try again.'));
@@ -388,6 +402,21 @@ export class RoomFacade {
       () => this.api.updateParticipantRole({ roomId, participantId, role }),
       'Unable to update participant role.',
     );
+  }
+
+  private resetRoomSession(): void {
+    this.participant.set(null);
+    this.roomTitle.set(null);
+    this.roomSlug.set(null);
+    this.roomId.set(null);
+  }
+
+  private async disconnectMediaSafely(): Promise<void> {
+    try {
+      await this.media.disconnect();
+    } catch {
+      // RoomMediaService.disconnect() performs local cleanup in a finally block.
+    }
   }
 
   private validateIdentity(roomId: string, displayName: string): boolean {
