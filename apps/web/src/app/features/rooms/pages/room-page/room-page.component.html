@@ -241,8 +241,12 @@
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
               <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
-              <div class="absolute right-0 top-8 z-30 w-44 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
-                <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature</button>
+              <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                @if (facade.featuredParticipantId() === participant.identity) {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                } @else {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
                 @if (participant.role !== 'moderator') {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.moveToAudience(participant.identity)">Move to audience</button>
                   <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
@@ -266,7 +270,12 @@
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
               <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
-              <div class="absolute right-0 top-8 z-30 w-44 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+              <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                @if (facade.featuredParticipantId() === participant.identity) {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                } @else {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
                 @if (participant.role !== 'moderator') {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(participant.identity)">Invite to speak</button>
                   <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
