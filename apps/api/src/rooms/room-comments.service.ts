@@ -4,6 +4,7 @@ import type {
   CreateRoomCommentRequest,
   RoomCommentHistoryItem,
   RoomReactionEmoji,
+  SetRoomCommentPinnedRequest,
   SetRoomCommentReactionRequest,
 } from '@live-discussions/contracts';
 import { DatabaseService } from '../database/database.service';
@@ -19,6 +20,7 @@ interface MemoryComment {
   timestamp: number;
   replyToId: string | null;
   reactions: Map<RoomReactionEmoji, Set<string>>;
+  pinned: boolean;
 }
 
 interface CommentRow {
@@ -28,6 +30,7 @@ interface CommentRow {
   text: string;
   reply_to_id: string | null;
   created_at: Date | string;
+  pinned: boolean;
 }
 
 interface ReactionRow {
@@ -58,9 +61,9 @@ export class RoomCommentsService {
     }
 
     const result = await this.database.query<CommentRow>(
-      `SELECT id, user_id, participant_name, text, reply_to_id, created_at
+      `SELECT id, user_id, participant_name, text, reply_to_id, created_at, pinned
        FROM (
-         SELECT id, user_id, participant_name, text, reply_to_id, created_at
+         SELECT id, user_id, participant_name, text, reply_to_id, created_at, pinned
          FROM room_comment
          WHERE room_id = $1
          ORDER BY created_at DESC, id DESC
@@ -98,6 +101,7 @@ export class RoomCommentsService {
       timestamp: this.toTimestamp(comment.created_at),
       replyToId: comment.reply_to_id,
       reactions: reactionsByComment.get(comment.id) ?? {},
+      pinned: comment.pinned,
     }));
   }
 
@@ -126,6 +130,7 @@ export class RoomCommentsService {
         timestamp: Date.now(),
         replyToId: request.replyToId,
         reactions: new Map(),
+        pinned: false,
       };
       roomComments.set(comment.id, comment);
       this.trimMemoryHistory(roomComments);
@@ -148,7 +153,7 @@ export class RoomCommentsService {
            id, room_id, user_id, participant_name, text, reply_to_id
          ) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO NOTHING
-         RETURNING id, user_id, participant_name, text, reply_to_id, created_at`,
+         RETURNING id, user_id, participant_name, text, reply_to_id, created_at, pinned`,
         [request.id, roomId, user.userId, user.displayName, request.text, request.replyToId],
       );
 
@@ -156,7 +161,7 @@ export class RoomCommentsService {
       if (row) return this.toDatabaseHistoryItem(row);
 
       const existing = await client.query<CommentRow & { room_id: string }>(
-        `SELECT id, room_id, user_id, participant_name, text, reply_to_id, created_at
+        `SELECT id, room_id, user_id, participant_name, text, reply_to_id, created_at, pinned
          FROM room_comment
          WHERE id = $1`,
         [request.id],
@@ -219,6 +224,28 @@ export class RoomCommentsService {
     );
   }
 
+  async setPinned(
+    roomIdentifier: string,
+    commentId: string,
+    request: SetRoomCommentPinnedRequest,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    const roomId = await this.requireModerator(roomIdentifier, user.userId);
+
+    if (!this.database.configured) {
+      const comment = this.commentsByRoom.get(roomId)?.get(commentId);
+      if (!comment) throw new NotFoundException('Comment not found.');
+      comment.pinned = request.pinned;
+      return;
+    }
+
+    const result = await this.database.query(
+      'UPDATE room_comment SET pinned = $3 WHERE id = $1 AND room_id = $2',
+      [commentId, roomId, request.pinned],
+    );
+    if (result.rowCount === 0) throw new NotFoundException('Comment not found.');
+  }
+
   clearRoom(roomId: string): void {
     if (!this.database.configured) this.commentsByRoom.delete(roomId);
   }
@@ -227,6 +254,15 @@ export class RoomCommentsService {
     const roomId = await this.memberships.resolveRoomId(roomIdentifier);
     const membership = await this.memberships.getMembership(roomId, userId);
     if (!membership) throw new ForbiddenException('You must join this room before accessing comments.');
+    return roomId;
+  }
+
+  private async requireModerator(roomIdentifier: string, userId: string): Promise<string> {
+    const roomId = await this.requireMembership(roomIdentifier, userId);
+    const role = await this.memberships.getRole(roomId, userId);
+    if (role !== 'owner' && role !== 'moderator') {
+      throw new ForbiddenException('Only owners and moderators can pin room comments.');
+    }
     return roomId;
   }
 
@@ -275,6 +311,7 @@ export class RoomCommentsService {
       timestamp: comment.timestamp,
       replyToId: comment.replyToId,
       reactions,
+      pinned: comment.pinned,
     };
   }
 
@@ -287,6 +324,7 @@ export class RoomCommentsService {
       timestamp: this.toTimestamp(comment.created_at),
       replyToId: comment.reply_to_id,
       reactions: {},
+      pinned: comment.pinned,
     };
   }
 
