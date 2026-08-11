@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import type { GetHouseResponse, HouseDetail, HouseMemberRole } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../core/dev-identity.service';
 import { RoomNavigationService } from '../../../core/room-navigation.service';
+import { RoomApiService } from '../../rooms/data-access/room-api.service';
 import { HouseApiService } from './house-api.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class HouseFacade {
   private readonly identity = inject(DevIdentityService);
   private readonly navigation = inject(RoomNavigationService);
   private readonly api = inject(HouseApiService);
+  private readonly roomsApi = inject(RoomApiService);
 
   readonly displayName = this.identity.displayName;
   readonly house = signal<HouseDetail | null>(null);
@@ -100,9 +102,10 @@ export class HouseFacade {
     return this.updateMemberRole(userId, 'member');
   }
 
-  async createRoom(title: string): Promise<void> {
+  async createRoom(title: string, description = '', isLocked = false): Promise<void> {
     const house = this.house();
     const normalizedTitle = title.trim();
+    const normalizedDescription = description.trim();
     if (this.creatingRoom() || !house || !normalizedTitle || !this.requireDisplayName()) {
       if (!normalizedTitle) this.error.set('Enter a room title.');
       return;
@@ -112,6 +115,17 @@ export class HouseFacade {
     this.error.set(null);
     try {
       const response = await this.api.createRoom(house.id, { title: normalizedTitle });
+      if (normalizedDescription || isLocked) {
+        try {
+          await this.roomsApi.updateRoomSettings(response.room.id, {
+            title: normalizedTitle,
+            description: normalizedDescription,
+            isLocked,
+          });
+        } catch {
+          // The room exists; its Settings panel can retry optional setup later.
+        }
+      }
       this.navigation.rememberOrigin(response.room.slug, `/houses/${house.id}`);
       await this.router.navigate(['/room', response.room.slug]);
     } catch (error) {
