@@ -13,6 +13,7 @@ import type {
   RoomParticipant,
   RoomSummary,
   SetFeaturedParticipantRequest,
+  SetRoomCommentPinnedRequest,
   SetRoomCommentReactionRequest,
   SetStagePresenceRequest,
   UpdateParticipantRoleRequest,
@@ -100,6 +101,20 @@ export class RoomApiService {
         request,
       ),
       'Unable to save this reaction to shared history.',
+    );
+  }
+
+  setCommentPinned(
+    roomId: string,
+    commentId: string,
+    request: SetRoomCommentPinnedRequest,
+  ): Promise<void> {
+    return apiRequestToPromise(
+      this.http.patch<void>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/comments/${encodeURIComponent(commentId)}/pinned`,
+        request,
+      ),
+      'Unable to update the pinned comment.',
     );
   }
 
