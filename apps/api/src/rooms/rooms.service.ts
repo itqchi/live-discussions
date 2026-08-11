@@ -158,29 +158,52 @@ export class RoomsService {
     userId: string,
     role: ParticipantRole,
   ): Promise<void> {
-    const permissions = permissionsForRole(role);
     const roomId = await this.memberships.resolveRoomId(roomIdentifier);
     const membership = await this.memberships.getMembership(roomId, userId);
-    const onStage = membership?.onStage ?? role !== 'listener';
+    const state: RoomMembershipState = {
+      role,
+      onStage: role === 'listener' ? false : membership?.onStage ?? true,
+    };
+    const roomService = this.roomServiceClient();
+
+    const activeRooms = await roomService.listRooms([roomId]);
+    if (activeRooms.length === 0) return;
+
+    const connectedParticipants = await roomService.listParticipants(roomId);
+    if (!connectedParticipants.some((participant) => participant.identity === userId)) return;
 
     try {
-      await this.roomServiceClient().updateParticipant(roomId, userId, {
-        metadata: JSON.stringify({ role }),
-        attributes: {
-          raisedHand: 'false',
-          onStage: onStage ? 'true' : 'false',
-        },
-        permission: {
-          canSubscribe: true,
-          canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
-          canPublishData: true,
-        },
-      });
-    } catch (error) {
-      // Persistence is authoritative. Offline participants receive the persisted role/state on their next join.
-      this.logger.debug(
-        `Skipped live role sync for ${userId} in room ${roomId}: ${this.errorMessage(error)}`,
-      );
+      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state));
+      return;
+    } catch (updateError) {
+      let stillConnected: boolean;
+      try {
+        const participantsAfterFailure = await roomService.listParticipants(roomId);
+        stillConnected = participantsAfterFailure.some((participant) => participant.identity === userId);
+      } catch (verificationError) {
+        this.logger.error(
+          `Unable to verify participant ${userId} after role-sync failure in room ${roomId}: ${this.errorMessage(verificationError)}`,
+        );
+        throw new ServiceUnavailableException(
+          'Unable to verify the connected participant after updating their House role.',
+        );
+      }
+
+      if (!stillConnected) return;
+
+      try {
+        await roomService.removeParticipant(roomId, userId);
+        this.logger.warn(
+          `Disconnected ${userId} from room ${roomId} after live role sync failed: ${this.errorMessage(updateError)}`,
+        );
+      } catch (disconnectError) {
+        this.logger.error(
+          `Unable to enforce updated role for ${userId} in room ${roomId}: ${this.errorMessage(disconnectError)}`,
+        );
+        throw new ServiceUnavailableException(
+          'Unable to enforce the updated House role for a connected participant.',
+        );
+      }
     }
   }
 
