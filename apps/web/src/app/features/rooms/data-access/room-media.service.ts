@@ -18,6 +18,8 @@ import {
 } from 'livekit-client';
 import { BrowserStorageService } from '../../../core/browser-storage.service';
 
+export type RoomConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
 export interface RoomPresenceParticipant {
   identity: string;
   name: string;
@@ -78,6 +80,7 @@ export class RoomMediaService {
   private nextVideoTileId = 1;
 
   readonly connected = signal(false);
+  readonly connectionStatus = signal<RoomConnectionStatus>('disconnected');
   readonly roomDeleted = signal(false);
   readonly microphoneEnabled = signal(false);
   readonly cameraEnabled = signal(false);
@@ -130,7 +133,21 @@ export class RoomMediaService {
     this.room.on(RoomEvent.Connected, () => {
       this.roomDeleted.set(false);
       this.connected.set(true);
+      this.connectionStatus.set('connected');
       this.restoreCachedComments();
+      this.syncAudioPlaybackState();
+      this.syncParticipants();
+      this.syncRoomMetadata(this.room.metadata);
+      this.syncLocalMediaState();
+    });
+
+    this.room.on(RoomEvent.Reconnecting, () => {
+      this.connectionStatus.set('reconnecting');
+    });
+
+    this.room.on(RoomEvent.Reconnected, () => {
+      this.connected.set(true);
+      this.connectionStatus.set('connected');
       this.syncAudioPlaybackState();
       this.syncParticipants();
       this.syncRoomMetadata(this.room.metadata);
@@ -214,8 +231,14 @@ export class RoomMediaService {
     });
   }
 
-  connect(session: JoinRoomResponse): Promise<void> {
-    return this.room.connect(session.livekitUrl, session.token);
+  async connect(session: JoinRoomResponse): Promise<void> {
+    this.connectionStatus.set('connecting');
+    try {
+      await this.room.connect(session.livekitUrl, session.token);
+    } catch (error) {
+      this.connectionStatus.set('disconnected');
+      throw error;
+    }
   }
 
   setFeaturedParticipant(participantId: string | null): void {
@@ -603,6 +626,7 @@ export class RoomMediaService {
 
   private resetMediaSignals(): void {
     this.connected.set(false);
+    this.connectionStatus.set('disconnected');
     this.microphoneEnabled.set(false);
     this.cameraEnabled.set(false);
     this.screenSharing.set(false);
