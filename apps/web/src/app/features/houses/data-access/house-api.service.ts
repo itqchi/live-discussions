@@ -52,10 +52,12 @@ export class HouseApiService {
     houseId: string,
     request: Omit<UpdateHouseMemberRoleRequest, 'houseId'>,
   ): Promise<HouseMember> {
+    const encodedHouseId = encodeURIComponent(houseId);
+    const encodedUserId = encodeURIComponent(request.userId);
     return apiRequestToPromise(
       this.http.patch<HouseMember>(
-        `${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}/members/role`,
-        request,
+        `${this.apiBaseUrl}/houses/${encodedHouseId}/members/${encodedUserId}/role`,
+        { role: request.role },
       ),
       'Unable to update the House member role.',
     );
