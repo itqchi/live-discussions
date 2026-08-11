@@ -26,6 +26,7 @@ interface MemoryRoom {
   description: string;
   isLocked: boolean;
   members: Map<string, RoomMembershipState>;
+  memberNames: Map<string, string>;
   bannedUsers: Map<string, string>;
 }
 
@@ -126,6 +127,7 @@ export class RoomMembershipService {
         description: '',
         isLocked: false,
         members: new Map([[owner.userId, { role: 'owner', onStage: true }]]),
+        memberNames: new Map([[owner.userId, owner.displayName]]),
         bannedUsers: new Map(),
       };
       this.roomsById.set(id, room);
@@ -223,7 +225,12 @@ export class RoomMembershipService {
     }
 
     const existing = await this.getMembership(roomId, user.userId);
-    if (existing) return existing;
+    if (existing) {
+      if (!this.database.configured) {
+        this.getMemoryRoom(roomId).memberNames.set(user.userId, user.displayName);
+      }
+      return existing;
+    }
 
     const room = await this.getRoomSummary(roomId);
     if (room.isLocked) {
@@ -232,7 +239,9 @@ export class RoomMembershipService {
 
     if (!this.database.configured) {
       const membership: RoomMembershipState = { role: 'listener', onStage: false };
-      this.getMemoryRoom(roomId).members.set(user.userId, membership);
+      const memoryRoom = this.getMemoryRoom(roomId);
+      memoryRoom.members.set(user.userId, membership);
+      memoryRoom.memberNames.set(user.userId, user.displayName);
       return { ...membership };
     }
 
@@ -349,18 +358,13 @@ export class RoomMembershipService {
     return result.rows[0]?.banned ?? false;
   }
 
-  async setBanned(
-    identifier: string,
-    userId: string,
-    displayName: string,
-    banned: boolean,
-  ): Promise<void> {
+  async setBanned(identifier: string, userId: string, banned: boolean): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
 
     if (!this.database.configured) {
       const room = this.getMemoryRoom(roomId);
       if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
-      if (banned) room.bannedUsers.set(userId, displayName || userId);
+      if (banned) room.bannedUsers.set(userId, room.memberNames.get(userId) ?? userId);
       else room.bannedUsers.delete(userId);
       return;
     }
@@ -420,6 +424,7 @@ export class RoomMembershipService {
     if (!this.database.configured) {
       const room = this.getMemoryRoom(roomId);
       const current = room.members.get(userId);
+      room.memberNames.set(userId, displayName);
       if (current?.role === 'owner') return;
       room.members.set(userId, {
         role,
