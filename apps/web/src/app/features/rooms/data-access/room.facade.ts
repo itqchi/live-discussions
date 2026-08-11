@@ -6,6 +6,7 @@ import type {
   ModeratedParticipantRole,
   ParticipantRole,
   RoomReactionEmoji,
+  UpdateRoomSettingsRequest,
 } from '@live-discussions/contracts';
 import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
@@ -38,11 +39,14 @@ export class RoomFacade {
 
   readonly joining = signal(false);
   readonly sendingComment = signal(false);
+  readonly savingSettings = signal(false);
   readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
   readonly roomTitle = signal<string | null>(null);
   readonly roomSlug = signal<string | null>(null);
+  readonly roomDescription = signal('');
+  readonly roomLocked = signal(false);
 
   private readonly roomId = signal<string | null>(null);
 
@@ -67,6 +71,7 @@ export class RoomFacade {
   readonly canModerate = computed(() =>
     this.currentRole() === 'owner' || this.currentRole() === 'moderator',
   );
+  readonly canEditRoomSettings = this.canModerate;
   readonly canCloseRoom = this.canModerate;
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
@@ -118,6 +123,19 @@ export class RoomFacade {
     });
   }
 
+  async loadRoomDetails(roomId: string): Promise<void> {
+    const normalizedRoomId = roomId.trim();
+    if (!normalizedRoomId) return;
+
+    try {
+      const room = await this.api.getRoom(normalizedRoomId);
+      this.applyRoomSummary(room);
+      if (!this.roomId()) this.roomId.set(normalizedRoomId);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to load room details.'));
+    }
+  }
+
   async join(roomId: string, displayName: string): Promise<void> {
     const normalizedRoomId = roomId.trim();
     const normalizedDisplayName = displayName.trim();
@@ -133,6 +151,11 @@ export class RoomFacade {
       this.returningToOrigin = false;
       this.identity.setDisplayName(normalizedDisplayName);
       this.roomId.set(normalizedRoomId);
+
+      const summary = await this.api.getRoom(normalizedRoomId);
+      if (attempt !== this.joinAttempt) return;
+      this.applyRoomSummary(summary);
+
       const session = await this.api.joinRoom(request);
       if (attempt !== this.joinAttempt) return;
 
@@ -156,8 +179,9 @@ export class RoomFacade {
       }
     } catch (error) {
       if (attempt !== this.joinAttempt) return;
-      this.resetRoomSession();
+      this.participant.set(null);
       await this.disconnectMediaSafely();
+      if (!this.roomTitle()) this.resetRoomSession();
       this.error.set(this.errorMessage(error, 'Unable to join the room.'));
     } finally {
       if (attempt === this.joinAttempt) this.joining.set(false);
@@ -176,8 +200,29 @@ export class RoomFacade {
     this.resetRoomSession();
     this.error.set(null);
 
-    if (normalizedRoomId && normalizedDisplayName) {
+    if (!normalizedRoomId) return;
+    if (normalizedDisplayName) {
       await this.join(normalizedRoomId, normalizedDisplayName);
+    } else {
+      await this.loadRoomDetails(normalizedRoomId);
+    }
+  }
+
+  async updateRoomSettings(request: UpdateRoomSettingsRequest): Promise<boolean> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canEditRoomSettings() || this.savingSettings()) return false;
+
+    this.savingSettings.set(true);
+    this.error.set(null);
+    try {
+      const room = await this.api.updateRoomSettings(roomId, request);
+      this.applyRoomSummary(room);
+      return true;
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to update room settings.'));
+      return false;
+    } finally {
+      this.savingSettings.set(false);
     }
   }
 
@@ -412,10 +457,24 @@ export class RoomFacade {
     );
   }
 
+  private applyRoomSummary(room: {
+    slug: string;
+    title: string;
+    description: string;
+    isLocked: boolean;
+  }): void {
+    this.roomSlug.set(room.slug);
+    this.roomTitle.set(room.title);
+    this.roomDescription.set(room.description);
+    this.roomLocked.set(room.isLocked);
+  }
+
   private resetRoomSession(): void {
     this.participant.set(null);
     this.roomTitle.set(null);
     this.roomSlug.set(null);
+    this.roomDescription.set('');
+    this.roomLocked.set(false);
     this.roomId.set(null);
   }
 
