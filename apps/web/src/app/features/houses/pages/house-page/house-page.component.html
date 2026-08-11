@@ -142,21 +142,43 @@
           <form class="rounded-3xl border border-sky-800/70 bg-sky-950/20 p-6" [formGroup]="roomForm" (ngSubmit)="createRoom()">
             <p class="text-xs font-bold tracking-[0.2em] text-sky-300">HOUSE MANAGEMENT</p>
             <h2 class="mt-2 text-xl font-semibold">Start a room here</h2>
-            <p class="mt-2 text-sm text-slate-400">House owners and admins can start discussions linked to {{ house.name }}.</p>
+            <p class="mt-2 text-sm text-slate-400">House owners and admins can set the topic and access mode before going live.</p>
 
-            <label class="mt-6 grid gap-2 text-sm text-slate-300">
-              Room title
-              <input
-                class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
-                formControlName="title"
-                placeholder="What should we talk about?"
-              />
-            </label>
+            <div class="mt-6 grid gap-4">
+              <label class="grid gap-2 text-sm text-slate-300">
+                Room title
+                <input
+                  class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+                  formControlName="title"
+                  maxlength="100"
+                  placeholder="What should we talk about?"
+                />
+              </label>
+
+              <label class="grid gap-2 text-sm text-slate-300">
+                Topic / description
+                <textarea
+                  class="min-h-24 resize-y rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+                  formControlName="description"
+                  maxlength="500"
+                  placeholder="Give House members some context before they join."
+                ></textarea>
+                <span class="text-xs text-slate-500">{{ roomForm.controls.description.value.length }}/500</span>
+              </label>
+
+              <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+                <input class="mt-1 size-4" type="checkbox" formControlName="isLocked" />
+                <span>
+                  <span class="block text-sm font-semibold text-slate-200">Start locked</span>
+                  <span class="mt-1 block text-xs leading-5 text-slate-500">Existing room members can reconnect; new participants wait until a moderator unlocks it.</span>
+                </span>
+              </label>
+            </div>
 
             <button
               class="mt-5 w-full rounded-xl bg-sky-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
               type="submit"
-              [disabled]="facade.creatingRoom()"
+              [disabled]="roomForm.invalid || facade.creatingRoom()"
             >
               {{ facade.creatingRoom() ? 'Creating…' : 'Create & enter room' }}
             </button>
