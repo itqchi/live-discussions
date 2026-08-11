@@ -75,15 +75,20 @@
               <article class="flex min-h-48 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
                 <div>
                   <div class="mb-4 flex items-center justify-between gap-3">
-                    <span
-                      class="rounded-full px-3 py-1 text-xs font-bold"
-                      [class.bg-emerald-950]="room.isLive"
-                      [class.text-emerald-200]="room.isLive"
-                      [class.bg-slate-800]="!room.isLive"
-                      [class.text-slate-400]="!room.isLive"
-                    >
-                      {{ room.isLive ? 'LIVE' : 'CLOSED' }}
-                    </span>
+                    <div class="flex flex-wrap gap-2">
+                      <span
+                        class="rounded-full px-3 py-1 text-xs font-bold"
+                        [class.bg-emerald-950]="room.isLive"
+                        [class.text-emerald-200]="room.isLive"
+                        [class.bg-slate-800]="!room.isLive"
+                        [class.text-slate-400]="!room.isLive"
+                      >
+                        {{ room.isLive ? 'LIVE' : 'CLOSED' }}
+                      </span>
+                      @if (room.isLive && room.isLocked) {
+                        <span class="rounded-full bg-amber-950 px-3 py-1 text-xs font-bold text-amber-200">🔒 LOCKED</span>
+                      }
+                    </div>
 
                     <div class="flex items-center gap-2">
                       <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
@@ -105,6 +110,12 @@
                     </div>
                   </div>
                   <h3 class="text-xl font-semibold">{{ room.title }}</h3>
+                  @if (room.description) {
+                    <p class="mt-2 line-clamp-3 text-sm leading-6 text-slate-400">{{ room.description }}</p>
+                  }
+                  @if (room.isLocked) {
+                    <p class="mt-3 text-xs text-amber-300">New participants are blocked; existing room members can reconnect.</p>
+                  }
                 </div>
 
                 <button
@@ -113,7 +124,7 @@
                   (click)="joinRoom(room.id)"
                   [disabled]="!room.isLive"
                 >
-                  {{ room.isLive ? 'Join discussion' : 'Room closed' }}
+                  {{ room.isLive ? (room.isLocked ? 'Open discussion' : 'Join discussion') : 'Room closed' }}
                 </button>
               </article>
             }
