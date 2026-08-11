@@ -62,10 +62,11 @@ export class HomeFacade {
     await this.router.navigate(['/room', room.slug]);
   }
 
-  async createRoom(title: string): Promise<void> {
+  async createRoom(title: string, description = '', isLocked = false): Promise<void> {
     if (this.creatingRoom()) return;
 
     const normalizedTitle = title.trim();
+    const normalizedDescription = description.trim();
     if (!normalizedTitle || !this.requireDisplayName()) {
       if (!normalizedTitle) this.error.set('Enter a room title.');
       return;
@@ -75,6 +76,17 @@ export class HomeFacade {
     this.error.set(null);
     try {
       const response = await this.roomsApi.createRoom({ title: normalizedTitle });
+      if (normalizedDescription || isLocked) {
+        try {
+          await this.roomsApi.updateRoomSettings(response.room.id, {
+            title: normalizedTitle,
+            description: normalizedDescription,
+            isLocked,
+          });
+        } catch {
+          // Room creation succeeded; its Settings panel can retry optional setup later.
+        }
+      }
       this.navigation.rememberOrigin(response.room.slug, '/');
       await this.router.navigate(['/room', response.room.slug]);
     } catch (error) {
