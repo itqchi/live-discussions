@@ -33,7 +33,9 @@ export interface DiscussionRoom {
   id: string;
   slug: string;
   title: string;
+  description: string;
   isLive: boolean;
+  isLocked: boolean;
   participants: RoomParticipant[];
 }
 
@@ -41,7 +43,9 @@ export interface RoomSummary {
   id: string;
   slug: string;
   title: string;
+  description: string;
   isLive: boolean;
+  isLocked: boolean;
   memberCount: number;
 }
 
@@ -67,6 +71,14 @@ export interface JoinRoomResponse {
   roomId: string;
   roomSlug: string;
   roomTitle: string;
+  roomDescription: string;
+  roomLocked: boolean;
+}
+
+export interface UpdateRoomSettingsRequest {
+  title: string;
+  description: string;
+  isLocked: boolean;
 }
 
 export interface RoomCommentHistoryItem {
