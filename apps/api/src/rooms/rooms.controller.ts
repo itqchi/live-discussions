@@ -23,6 +23,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
 import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
+import { SetRoomCommentPinnedDto } from './dto/set-room-comment-pinned.dto';
 import { SetRoomCommentReactionDto } from './dto/set-room-comment-reaction.dto';
 import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
@@ -100,6 +101,17 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
     await this.roomComments.setReaction(roomId, commentId, request, user);
+  }
+
+  @Patch(':roomId/comments/:commentId/pinned')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async setCommentPinned(
+    @Param('roomId') roomId: string,
+    @Param('commentId') commentId: string,
+    @Body() request: SetRoomCommentPinnedDto,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomComments.setPinned(roomId, commentId, request, user);
   }
 
   @Patch('hand')
