@@ -115,7 +115,8 @@ export default function App(): React.JSX.Element {
           <View style={styles.roomHeader}>
             <View>
               <Text style={styles.eyebrow}>LIVE ROOM</Text>
-              <Text style={styles.title}>{session.roomSlug}</Text>
+              <Text style={styles.title}>{session.roomTitle}</Text>
+              <Text style={styles.roomPath}>/room/{session.roomSlug}</Text>
               <Text style={styles.role}>{session.participant.role}</Text>
             </View>
             <Button title="Leave" onPress={() => setSession(null)} />
@@ -162,6 +163,7 @@ const styles = StyleSheet.create({
   joinCard: { flex: 1, justifyContent: 'center', padding: 24, gap: 14 },
   eyebrow: { color: '#94a3b8', fontSize: 12, fontWeight: '700', letterSpacing: 1.4 },
   title: { color: 'white', fontSize: 28, fontWeight: '700', marginTop: 4 },
+  roomPath: { color: '#64748b', marginTop: 4 },
   role: { color: '#a5b4fc', marginTop: 4, textTransform: 'capitalize' },
   input: { backgroundColor: 'white', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
   error: { color: '#fca5a5' },
