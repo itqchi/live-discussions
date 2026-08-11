@@ -16,6 +16,7 @@ import type {
   SetRoomCommentReactionRequest,
   SetStagePresenceRequest,
   UpdateParticipantRoleRequest,
+  UpdateRoomSettingsRequest,
 } from '@live-discussions/contracts';
 import { API_BASE_URL } from '../../../core/api-base-url.token';
 import { apiRequestToPromise } from '../../../core/api-request.util';
@@ -29,6 +30,26 @@ export class RoomApiService {
     return apiRequestToPromise(
       this.http.get<RoomSummary[]>(`${this.apiBaseUrl}/rooms`),
       'Unable to load rooms.',
+    );
+  }
+
+  getRoom(roomId: string): Promise<RoomSummary> {
+    return apiRequestToPromise(
+      this.http.get<RoomSummary>(`${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}`),
+      'Unable to load room details.',
+    );
+  }
+
+  updateRoomSettings(
+    roomId: string,
+    request: UpdateRoomSettingsRequest,
+  ): Promise<RoomSummary> {
+    return apiRequestToPromise(
+      this.http.patch<RoomSummary>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/settings`,
+        request,
+      ),
+      'Unable to update room settings.',
     );
   }
 
