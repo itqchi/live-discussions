@@ -179,7 +179,7 @@ export class RoomsService {
     actor: AuthenticatedUser,
   ): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
-    const actorRole = await this.assertCanModerate(roomId, actor.userId);
+    await this.assertCanModerate(roomId, actor.userId);
 
     if (request.participantId === actor.userId) {
       throw new ForbiddenException('Use Leave to exit the room yourself.');
@@ -188,8 +188,10 @@ export class RoomsService {
     const targetRole = await this.memberships.getRole(roomId, request.participantId);
     if (!targetRole) throw new ForbiddenException('Participant is not a member of this room.');
     if (targetRole === 'owner') throw new ForbiddenException('The room owner cannot be removed.');
-    if (actorRole === 'moderator' && targetRole === 'moderator') {
-      throw new ForbiddenException('Moderators cannot remove other moderators.');
+    if (targetRole === 'moderator') {
+      throw new ForbiddenException(
+        'A House admin cannot be removed from an individual room. Change their House admin role instead.',
+      );
     }
 
     const roomService = this.roomServiceClient();
@@ -202,13 +204,17 @@ export class RoomsService {
     actor: AuthenticatedUser,
   ): Promise<RoomParticipant> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
-    const actorRole = await this.assertCanModerate(roomId, actor.userId);
-    const targetRole = await this.memberships.getRole(roomId, request.participantId);
+    await this.assertCanModerate(roomId, actor.userId);
+    const targetMembership = await this.memberships.getMembership(roomId, request.participantId);
 
-    if (!targetRole) throw new ForbiddenException('Participant is not a room member.');
-    if (targetRole === 'owner') throw new ForbiddenException('The room owner role cannot be changed here.');
-    if (targetRole === 'moderator' && actorRole !== 'owner') {
-      throw new ForbiddenException('Moderators cannot change another moderator role.');
+    if (!targetMembership) throw new ForbiddenException('Participant is not a room member.');
+    if (targetMembership.role === 'owner') {
+      throw new ForbiddenException('The room owner role cannot be changed here.');
+    }
+    if (targetMembership.role === 'moderator') {
+      throw new ForbiddenException(
+        'A House admin role cannot be changed from the room. Use House Settings instead.',
+      );
     }
 
     await this.memberships.setRole(roomId, request.participantId, request.role);
