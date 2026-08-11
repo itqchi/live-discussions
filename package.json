@@ -19,12 +19,12 @@
     "build:api": "nx build api",
     "build": "nx run-many -t build -p contracts web api",
     "typecheck:mobile": "nx typecheck mobile",
-    "check:scripts": "node --check scripts/serve-api.mjs && node --check scripts/start-api-production.mjs && node --check scripts/write-web-runtime-config.mjs && node --check scripts/migrate-api.mjs",
+    "check:scripts": "node --check scripts/serve-api.mjs && node --check scripts/start-api-production.mjs && node --check scripts/write-web-runtime-config.mjs && node --check scripts/migrate-api.mjs && node --check scripts/check-mobile-native.mjs",
     "check": "npm run check:scripts && npm run build && npm run typecheck:mobile",
     "start:api:production": "node scripts/start-api-production.mjs",
     "mobile": "nx start mobile",
-    "mobile:ios": "nx run-ios mobile",
-    "mobile:android": "nx run-android mobile"
+    "mobile:ios": "node scripts/check-mobile-native.mjs ios && nx run-ios mobile",
+    "mobile:android": "node scripts/check-mobile-native.mjs android && nx run-android mobile"
   },
   "devDependencies": {
     "@angular/build": "22.0.7",
