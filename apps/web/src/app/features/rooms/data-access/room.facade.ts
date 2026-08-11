@@ -23,6 +23,7 @@ export class RoomFacade {
   private returningToOrigin = false;
 
   readonly connected = this.media.connected.asReadonly();
+  readonly connectionStatus = this.media.connectionStatus.asReadonly();
   readonly microphoneEnabled = this.media.microphoneEnabled.asReadonly();
   readonly cameraEnabled = this.media.cameraEnabled.asReadonly();
   readonly screenSharing = this.media.screenSharing.asReadonly();
