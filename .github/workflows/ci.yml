@@ -34,6 +34,9 @@ jobs:
       - name: Smoke test compiled API
         env:
           DATABASE_DRIVER: memory
+          LIVEKIT_URL: wss://ci.livekit.example
+          LIVEKIT_API_KEY: ci-api-key
+          LIVEKIT_API_SECRET: ci-api-secret
           PORT: 3100
         run: |
           npm run start:api:production > /tmp/live-discussions-api.log 2>&1 &
