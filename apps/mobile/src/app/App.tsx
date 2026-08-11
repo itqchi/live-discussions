@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Button,
   FlatList,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -20,7 +21,11 @@ import {
 import { Track } from 'livekit-client';
 import type { JoinRoomRequest, JoinRoomResponse } from '@live-discussions/contracts';
 
-const API_URL = 'http://localhost:3000';
+const DEFAULT_API_URL = Platform.select({
+  android: 'http://10.0.2.2:3000',
+  ios: 'http://localhost:3000',
+  default: 'http://localhost:3000',
+}) ?? 'http://localhost:3000';
 
 function RoomStage(): React.JSX.Element {
   const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
@@ -47,6 +52,7 @@ function RoomStage(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
+  const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [roomId, setRoomId] = useState('general');
   const [displayName, setDisplayName] = useState('Mobile user');
   const [userId] = useState(
@@ -69,9 +75,14 @@ export default function App(): React.JSX.Element {
   );
 
   async function join(): Promise<void> {
+    const normalizedApiUrl = apiUrl.trim().replace(/\/+$/, '');
     const normalizedDisplayName = displayName.trim();
     if (!request.roomId || !normalizedDisplayName) {
       setError('Room and display name are required.');
+      return;
+    }
+    if (!/^https?:\/\//i.test(normalizedApiUrl)) {
+      setError('API base URL must start with http:// or https://.');
       return;
     }
 
@@ -79,7 +90,7 @@ export default function App(): React.JSX.Element {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/rooms/join`, {
+      const response = await fetch(`${normalizedApiUrl}/rooms/join`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -93,6 +104,7 @@ export default function App(): React.JSX.Element {
         throw new Error(`Join failed (${response.status})`);
       }
 
+      setApiUrl(normalizedApiUrl);
       setSession((await response.json()) as JoinRoomResponse);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to join room');
@@ -135,10 +147,23 @@ export default function App(): React.JSX.Element {
 
         <TextInput
           style={styles.input}
+          value={apiUrl}
+          onChangeText={setApiUrl}
+          placeholder="API base URL"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        <Text style={styles.hint}>
+          Android emulator defaults to 10.0.2.2. For a physical device, use your computer's LAN URL or the hosted API URL.
+        </Text>
+        <TextInput
+          style={styles.input}
           value={roomId}
           onChangeText={setRoomId}
           placeholder="Room name"
           autoCapitalize="none"
+          autoCorrect={false}
         />
         <TextInput
           style={styles.input}
@@ -166,6 +191,7 @@ const styles = StyleSheet.create({
   roomPath: { color: '#64748b', marginTop: 4 },
   role: { color: '#a5b4fc', marginTop: 4, textTransform: 'capitalize' },
   input: { backgroundColor: 'white', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  hint: { color: '#94a3b8', fontSize: 12, lineHeight: 17 },
   error: { color: '#fca5a5' },
   roomHeader: {
     padding: 20,
