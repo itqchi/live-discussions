@@ -54,7 +54,6 @@ export class RoomsService {
         isLive: true,
         participants: [participant],
       },
-      participant,
     };
   }
 
@@ -170,7 +169,7 @@ export class RoomsService {
     if (activeRooms.length === 0) return;
 
     const connectedParticipants = await roomService.listParticipants(roomId);
-    if (!connectedParticipants.some((participant) => participant.identity === userId)) return;
+    if (!connectedParticipants.some((connected) => connected.identity === userId)) return;
 
     try {
       await roomService.updateParticipant(roomId, userId, this.participantUpdate(state));
@@ -179,7 +178,7 @@ export class RoomsService {
       let stillConnected: boolean;
       try {
         const participantsAfterFailure = await roomService.listParticipants(roomId);
-        stillConnected = participantsAfterFailure.some((participant) => participant.identity === userId);
+        stillConnected = participantsAfterFailure.some((connected) => connected.identity === userId);
       } catch (verificationError) {
         this.logger.error(
           `Unable to verify participant ${userId} after role-sync failure in room ${roomId}: ${this.errorMessage(verificationError)}`,
