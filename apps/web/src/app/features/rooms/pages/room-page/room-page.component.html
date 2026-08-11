@@ -136,20 +136,20 @@
       </div>
 
       @if (facade.featuredParticipant(); as participant) {
-        <article class="relative mb-5 overflow-hidden rounded-3xl border border-indigo-500/60 bg-slate-950">
+        <article class="speaker-surface relative mb-5 overflow-hidden rounded-3xl border border-indigo-500/60 bg-slate-950" [class.is-speaking]="participant.isSpeaking">
           @if (facade.featuredVisualTrack(); as tile) {
             <live-discussions-video-track [track]="tile.track" [mirrored]="tile.isLocal && tile.source === 'camera'" />
           } @else {
-            <div class="flex min-h-[340px] items-center justify-center bg-gradient-to-br from-indigo-950 to-slate-950">
-              <div class="text-center">
-                <div class="featured-avatar mx-auto flex items-center justify-center rounded-full bg-indigo-500 text-5xl font-bold text-white">{{ initialsFor(participant.name) }}</div>
-                <p class="mt-4 text-xl font-semibold">{{ participant.name }}</p>
+            <div class="relative min-h-[340px] bg-gradient-to-br from-indigo-950 to-slate-950">
+              <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div class="speaker-avatar featured-avatar flex items-center justify-center rounded-full bg-indigo-500 text-5xl font-bold text-white" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
               </div>
             </div>
           }
           <div class="absolute bottom-4 left-4 rounded-xl bg-black/70 px-3 py-2 text-sm backdrop-blur">
             <span class="font-semibold">{{ participant.name }}</span>
             <span class="ml-2 capitalize text-slate-300">{{ participant.role }}</span>
+            @if (participant.isSpeaking) { <span class="ml-2 font-semibold text-emerald-300">Speaking</span> }
             @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-2 text-xl">{{ emoji }}</span> }
           </div>
         </article>
@@ -161,19 +161,20 @@
 
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         @for (participant of facade.secondaryStageParticipants(); track participant.identity) {
-          <article class="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
+          <article class="speaker-surface relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-950" [class.is-speaking]="participant.isSpeaking">
             @if (facade.visualTrackFor(participant.identity); as tile) {
               <live-discussions-video-track [track]="tile.track" [mirrored]="tile.isLocal && tile.source === 'camera'" />
             } @else {
               <div class="flex min-h-44 items-center justify-center">
                 <div class="text-center">
-                  <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-slate-700 text-lg font-bold">{{ initialsFor(participant.name) }}</div>
+                  <div class="speaker-avatar mx-auto flex size-16 items-center justify-center rounded-full bg-slate-700 text-lg font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
                   <p class="mt-2 text-sm font-semibold">{{ participant.name }}</p>
                 </div>
               </div>
             }
             <div class="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-1 text-xs">
               {{ participant.name }}
+              @if (participant.isSpeaking) { <span class="ml-1 font-semibold text-emerald-300">Speaking</span> }
               @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-1 text-base">{{ emoji }}</span> }
             </div>
           </article>
@@ -202,10 +203,10 @@
 
       @for (participant of facade.stageParticipants(); track participant.identity) {
         <div class="mb-2 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500 font-bold">{{ initialsFor(participant.name) }}</div>
+          <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.raisedHand) { · ✋ }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
@@ -227,10 +228,10 @@
       }
       @for (participant of facade.audienceParticipants(); track participant.identity) {
         <div class="mb-2 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold">{{ initialsFor(participant.name) }}</div>
+          <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.raisedHand) { · ✋ }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
