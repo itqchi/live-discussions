@@ -240,40 +240,40 @@ export class RoomMembershipService {
     return membership ? { role: membership.role, onStage: membership.on_stage } : null;
   }
 
-  async setStagePresence(identifier: string, userId: string, onStage: boolean): Promise<void> {
+  async setMembershipState(
+    identifier: string,
+    userId: string,
+    state: RoomMembershipState,
+  ): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      const membership = room.members.get(userId);
-      if (!membership) throw new NotFoundException('Participant is not a room member.');
-      room.members.set(userId, { ...membership, onStage });
-      return;
-    }
-
-    const result = await this.database.query(
-      'UPDATE room_member SET on_stage = $3 WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId, onStage],
-    );
-    if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
-  }
-
-  async setRole(identifier: string, userId: string, role: ParticipantRole): Promise<void> {
-    const roomId = await this.resolveRoomId(identifier);
-    const onStage = role !== 'listener';
 
     if (!this.database.configured) {
       const room = this.getMemoryRoom(roomId);
       if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
-      room.members.set(userId, { role, onStage });
+      room.members.set(userId, { ...state });
       return;
     }
 
     const result = await this.database.query(
       'UPDATE room_member SET role = $3, on_stage = $4 WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId, role, onStage],
+      [roomId, userId, state.role, state.onStage],
     );
     if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
+  }
+
+  async setStagePresence(identifier: string, userId: string, onStage: boolean): Promise<void> {
+    const membership = await this.getMembership(identifier, userId);
+    if (!membership) throw new NotFoundException('Participant is not a room member.');
+    await this.setMembershipState(identifier, userId, { ...membership, onStage });
+  }
+
+  async setRole(identifier: string, userId: string, role: ParticipantRole): Promise<void> {
+    const membership = await this.getMembership(identifier, userId);
+    if (!membership) throw new NotFoundException('Participant is not a room member.');
+    await this.setMembershipState(identifier, userId, {
+      role,
+      onStage: role !== 'listener',
+    });
   }
 
   async ensureRole(
