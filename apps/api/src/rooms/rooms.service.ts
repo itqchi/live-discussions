@@ -303,7 +303,10 @@ export class RoomsService {
 
   private roomServiceClient(): RoomServiceClient {
     const { livekitUrl, apiKey, apiSecret } = this.liveKitConfig();
-    return new RoomServiceClient(livekitUrl.replace(/^wss:/, 'https:'), apiKey, apiSecret);
+    const serviceUrl = livekitUrl
+      .replace(/^wss:/, 'https:')
+      .replace(/^ws:/, 'http:');
+    return new RoomServiceClient(serviceUrl, apiKey, apiSecret);
   }
 
   private liveKitConfig(): { livekitUrl: string; apiKey: string; apiSecret: string } {
