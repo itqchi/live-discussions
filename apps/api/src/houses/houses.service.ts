@@ -37,9 +37,14 @@ interface HouseSummaryRow {
   room_ids: string[];
 }
 
+interface DatabaseErrorLike {
+  code?: string;
+}
+
 @Injectable()
 export class HousesService {
   private readonly houses = new Map<string, HouseRecord>();
+  private readonly roomNameReservations = new Set<string>();
 
   constructor(
     private readonly database: DatabaseService,
@@ -243,48 +248,67 @@ export class HousesService {
       throw new ForbiddenException('Only the House owner or an admin can create rooms in this House.');
     }
 
-    const house = await this.getHouseSummary(houseId);
-    const rooms = await this.existingRooms(house.roomIds);
-    const normalizedName = request.title.trim().toLowerCase();
-    if (rooms.some((room) => room.title.trim().toLowerCase() === normalizedName)) {
-      throw new ConflictException('A room with this name already exists in this House.');
+    const normalizedName = this.normalizeRoomName(request.title);
+    const reservationKey = this.database.configured
+      ? null
+      : `${houseId}\u0000${normalizedName}`;
+
+    if (reservationKey) {
+      if (this.roomNameReservations.has(reservationKey)) {
+        throw new ConflictException('A room with this name is already being created in this House.');
+      }
+      this.roomNameReservations.add(reservationKey);
     }
 
-    const members = await this.getMembers(houseId);
-    const houseOwner = members.find((member) => member.role === 'owner');
-    if (!houseOwner) throw new NotFoundException('House owner not found.');
-
-    const roomOwner: AuthenticatedUser = {
-      userId: houseOwner.userId,
-      displayName: houseOwner.displayName,
-    };
-    const response = await this.roomsService.createRoom(request, roomOwner);
-    const roomId = response.room.id;
-
     try {
-      if (!this.database.configured) {
-        this.getHouseRecord(houseId).roomIds.push(roomId);
-      } else {
-        await this.database.query(
-          'INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)',
-          [houseId, roomId],
-        );
+      const house = await this.getHouseSummary(houseId);
+      const rooms = await this.existingRooms(house.roomIds);
+      if (rooms.some((room) => this.normalizeRoomName(room.title) === normalizedName)) {
+        throw new ConflictException('A room with this name already exists in this House.');
       }
 
-      await this.applyAdminsToRoom(houseId, roomId);
-      return response;
-    } catch (error) {
-      if (!this.database.configured) {
-        const record = this.getHouseRecord(houseId);
-        record.roomIds = record.roomIds.filter((id) => id !== roomId);
-      }
+      const members = await this.getMembers(houseId);
+      const houseOwner = members.find((member) => member.role === 'owner');
+      if (!houseOwner) throw new NotFoundException('House owner not found.');
+
+      const roomOwner: AuthenticatedUser = {
+        userId: houseOwner.userId,
+        displayName: houseOwner.displayName,
+      };
+      const response = await this.roomsService.createRoom(request, roomOwner);
+      const roomId = response.room.id;
 
       try {
-        await this.roomMemberships.deleteRoom(roomId);
-      } catch {
-        // Preserve the original linking/synchronization failure.
+        if (!this.database.configured) {
+          this.getHouseRecord(houseId).roomIds.push(roomId);
+        } else {
+          await this.database.query(
+            'INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)',
+            [houseId, roomId],
+          );
+        }
+
+        await this.persistAdminsToRoom(houseId, roomId);
+        return response;
+      } catch (error) {
+        if (!this.database.configured) {
+          const record = this.getHouseRecord(houseId);
+          record.roomIds = record.roomIds.filter((id) => id !== roomId);
+        }
+
+        try {
+          await this.roomMemberships.deleteRoom(roomId);
+        } catch {
+          // Preserve the original linking/persistence failure.
+        }
+
+        if (this.isUniqueViolation(error)) {
+          throw new ConflictException('A room with this name already exists in this House.');
+        }
+        throw error;
       }
-      throw error;
+    } finally {
+      if (reservationKey) this.roomNameReservations.delete(reservationKey);
     }
   }
 
@@ -321,13 +345,12 @@ export class HousesService {
     return rooms.filter((room): room is RoomSummary => room !== null);
   }
 
-  private async applyAdminsToRoom(houseId: string, roomId: string): Promise<void> {
+  private async persistAdminsToRoom(houseId: string, roomId: string): Promise<void> {
     const admins = (await this.getMembers(houseId)).filter((member) => member.role === 'admin');
     await Promise.all(
-      admins.map(async (admin) => {
-        await this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName);
-        await this.roomsService.syncParticipantRoleIfConnected(roomId, admin.userId, 'moderator');
-      }),
+      admins.map((admin) =>
+        this.roomMemberships.ensureRole(roomId, admin.userId, 'moderator', admin.displayName),
+      ),
     );
   }
 
@@ -404,6 +427,16 @@ export class HousesService {
       [houseId, userId],
     );
     return result.rows[0]?.role ?? null;
+  }
+
+  private normalizeRoomName(title: string): string {
+    return title.trim().toLowerCase();
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return typeof error === 'object'
+      && error !== null
+      && (error as DatabaseErrorLike).code === '23505';
   }
 
   private getHouseRecord(houseId: string): HouseRecord {
