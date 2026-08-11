@@ -79,8 +79,10 @@ export class RoomApiService {
   }
 
   removeParticipant(request: RemoveParticipantRequest): Promise<void> {
+    const roomId = encodeURIComponent(request.roomId);
+    const participantId = encodeURIComponent(request.participantId);
     return apiRequestToPromise(
-      this.http.delete<void>(`${this.apiBaseUrl}/rooms/participants`, { body: request }),
+      this.http.delete<void>(`${this.apiBaseUrl}/rooms/${roomId}/participants/${participantId}`),
       'Unable to remove participant from the room.',
     );
   }
