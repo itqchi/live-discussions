@@ -7,6 +7,7 @@ import {
 import type {
   AuthenticatedUser,
   ParticipantRole,
+  RoomBannedUser,
   RoomSummary,
   UpdateRoomSettingsRequest,
 } from '@live-discussions/contracts';
@@ -25,6 +26,7 @@ interface MemoryRoom {
   description: string;
   isLocked: boolean;
   members: Map<string, RoomMembershipState>;
+  bannedUsers: Map<string, string>;
 }
 
 interface DatabaseErrorLike {
@@ -57,7 +59,7 @@ export class RoomMembershipService {
       member_count: string;
     }>(
       `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
-              COUNT(member.user_id)::text AS member_count
+              COUNT(member.user_id) FILTER (WHERE member.banned = FALSE)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
        GROUP BY room.id, room.slug, room.title, room.description, room.is_locked
@@ -91,7 +93,7 @@ export class RoomMembershipService {
       member_count: string;
     }>(
       `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
-              COUNT(member.user_id)::text AS member_count
+              COUNT(member.user_id) FILTER (WHERE member.banned = FALSE)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
        WHERE room.id = $1
@@ -124,6 +126,7 @@ export class RoomMembershipService {
         description: '',
         isLocked: false,
         members: new Map([[owner.userId, { role: 'owner', onStage: true }]]),
+        bannedUsers: new Map(),
       };
       this.roomsById.set(id, room);
       this.roomIdBySlug.set(slug, id);
@@ -215,6 +218,10 @@ export class RoomMembershipService {
 
   async resolveMembership(identifier: string, user: AuthenticatedUser): Promise<RoomMembershipState> {
     const roomId = await this.resolveRoomId(identifier);
+    if (await this.isBanned(roomId, user.userId)) {
+      throw new ForbiddenException('You have been banned from this room.');
+    }
+
     const existing = await this.getMembership(roomId, user.userId);
     if (existing) return existing;
 
@@ -245,12 +252,13 @@ export class RoomMembershipService {
         [roomId, user.userId],
       );
 
-      const result = await client.query<{ role: ParticipantRole; on_stage: boolean }>(
-        'SELECT role, on_stage FROM room_member WHERE room_id = $1 AND user_id = $2',
+      const result = await client.query<{ role: ParticipantRole; on_stage: boolean; banned: boolean }>(
+        'SELECT role, on_stage, banned FROM room_member WHERE room_id = $1 AND user_id = $2',
         [roomId, user.userId],
       );
       const membership = result.rows[0];
       if (!membership) throw new NotFoundException('Room membership could not be resolved.');
+      if (membership.banned) throw new ForbiddenException('You have been banned from this room.');
       return { role: membership.role, onStage: membership.on_stage };
     });
   }
@@ -301,6 +309,67 @@ export class RoomMembershipService {
     );
     const membership = result.rows[0];
     return membership ? { role: membership.role, onStage: membership.on_stage } : null;
+  }
+
+  async listBannedUsers(identifier: string): Promise<RoomBannedUser[]> {
+    const roomId = await this.resolveRoomId(identifier);
+
+    if (!this.database.configured) {
+      return [...this.getMemoryRoom(roomId).bannedUsers.entries()]
+        .map(([userId, displayName]) => ({ userId, displayName }))
+        .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }
+
+    const result = await this.database.query<{ user_id: string; display_name: string }>(
+      `SELECT member.user_id, app_user.display_name
+       FROM room_member member
+       JOIN app_user ON app_user.id = member.user_id
+       WHERE member.room_id = $1 AND member.banned = TRUE
+       ORDER BY app_user.display_name ASC, member.user_id ASC`,
+      [roomId],
+    );
+
+    return result.rows.map((row) => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+    }));
+  }
+
+  async isBanned(identifier: string, userId: string): Promise<boolean> {
+    const roomId = await this.resolveRoomId(identifier);
+
+    if (!this.database.configured) {
+      return this.getMemoryRoom(roomId).bannedUsers.has(userId);
+    }
+
+    const result = await this.database.query<{ banned: boolean }>(
+      'SELECT banned FROM room_member WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId],
+    );
+    return result.rows[0]?.banned ?? false;
+  }
+
+  async setBanned(
+    identifier: string,
+    userId: string,
+    displayName: string,
+    banned: boolean,
+  ): Promise<void> {
+    const roomId = await this.resolveRoomId(identifier);
+
+    if (!this.database.configured) {
+      const room = this.getMemoryRoom(roomId);
+      if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
+      if (banned) room.bannedUsers.set(userId, displayName || userId);
+      else room.bannedUsers.delete(userId);
+      return;
+    }
+
+    const result = await this.database.query(
+      'UPDATE room_member SET banned = $3 WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId, banned],
+    );
+    if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
   }
 
   async setMembershipState(
@@ -419,7 +488,7 @@ export class RoomMembershipService {
       description: room.description,
       isLive: true,
       isLocked: room.isLocked,
-      memberCount: room.members.size,
+      memberCount: Math.max(0, room.members.size - room.bannedUsers.size),
     };
   }
 }
