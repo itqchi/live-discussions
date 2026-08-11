@@ -5,6 +5,7 @@ import type {
   JoinRoomResponse,
   ModeratedParticipantRole,
   ParticipantRole,
+  RoomBannedUser,
   RoomCommentHistoryItem,
   RoomReactionEmoji,
   UpdateRoomSettingsRequest,
@@ -43,6 +44,8 @@ export class RoomFacade {
   readonly joining = signal(false);
   readonly sendingComment = signal(false);
   readonly savingSettings = signal(false);
+  readonly loadingBans = signal(false);
+  readonly updatingBanUserId = signal<string | null>(null);
   readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
@@ -51,6 +54,7 @@ export class RoomFacade {
   readonly roomDescription = signal('');
   readonly roomLocked = signal(false);
   readonly pinnedCommentIds = signal<ReadonlySet<string>>(new Set());
+  readonly bannedUsers = signal<RoomBannedUser[]>([]);
 
   private readonly roomId = signal<string | null>(null);
 
@@ -199,6 +203,10 @@ export class RoomFacade {
           this.error.set('Room connected, but shared comment history could not be loaded.');
         }
       }
+
+      if (attempt === this.joinAttempt && this.canModerate()) {
+        await this.refreshBannedUsers(session.roomId, false);
+      }
     } catch (error) {
       if (attempt !== this.joinAttempt) return;
       this.participant.set(null);
@@ -245,6 +253,44 @@ export class RoomFacade {
       return false;
     } finally {
       this.savingSettings.set(false);
+    }
+  }
+
+  async loadBannedUsers(): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canModerate()) return;
+    await this.refreshBannedUsers(roomId, true);
+  }
+
+  async banParticipant(participantId: string): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canModerate() || this.updatingBanUserId()) return;
+
+    this.updatingBanUserId.set(participantId);
+    this.error.set(null);
+    try {
+      await this.api.banParticipant(roomId, participantId);
+      await this.refreshBannedUsers(roomId, false);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to ban this participant.'));
+    } finally {
+      this.updatingBanUserId.set(null);
+    }
+  }
+
+  async unbanParticipant(participantId: string): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canModerate() || this.updatingBanUserId()) return;
+
+    this.updatingBanUserId.set(participantId);
+    this.error.set(null);
+    try {
+      await this.api.unbanParticipant(roomId, participantId);
+      this.bannedUsers.update((users) => users.filter((user) => user.userId !== participantId));
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to unban this participant.'));
+    } finally {
+      this.updatingBanUserId.set(null);
     }
   }
 
@@ -504,17 +550,38 @@ export class RoomFacade {
 
   private async reconcileSharedRoomState(roomId: string): Promise<void> {
     try {
-      const [room, history] = await Promise.all([
+      const [room, history, bannedUsers] = await Promise.all([
         this.api.getRoom(roomId),
         this.api.listComments(roomId),
+        this.canModerate() ? this.api.listBannedUsers(roomId) : Promise.resolve([]),
       ]);
       if (this.roomId() !== roomId || !this.connected()) return;
 
       this.applyRoomSummary(room);
       this.media.hydrateComments(history);
       this.applyPinnedHistory(history);
+      if (this.canModerate()) this.bannedUsers.set(bannedUsers);
+      else this.bannedUsers.set([]);
     } catch {
       // Realtime media remains usable; the next reconciliation attempt can recover shared state.
+    }
+  }
+
+  private async refreshBannedUsers(roomId: string, reportError: boolean): Promise<void> {
+    if (!this.canModerate()) {
+      this.bannedUsers.set([]);
+      return;
+    }
+
+    this.loadingBans.set(true);
+    try {
+      this.bannedUsers.set(await this.api.listBannedUsers(roomId));
+    } catch (error) {
+      if (reportError) {
+        this.error.set(this.errorMessage(error, 'Unable to load banned participants.'));
+      }
+    } finally {
+      this.loadingBans.set(false);
     }
   }
 
@@ -543,6 +610,7 @@ export class RoomFacade {
     this.roomDescription.set('');
     this.roomLocked.set(false);
     this.pinnedCommentIds.set(new Set());
+    this.bannedUsers.set([]);
     this.roomId.set(null);
   }
 
