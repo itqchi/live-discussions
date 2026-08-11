@@ -4,14 +4,23 @@ import type { AuthenticatedUser } from '@live-discussions/contracts';
 const MAX_USER_ID_LENGTH = 120;
 const MAX_DISPLAY_NAME_LENGTH = 80;
 
-export function devIdentityFromHeaders(
-  headers: Record<string, string | string[] | undefined>,
-): AuthenticatedUser {
+type Headers = Record<string, string | string[] | undefined>;
+
+export function devIdentityFromHeaders(headers: Headers): AuthenticatedUser {
+  const identity = optionalDevIdentityFromHeaders(headers);
+  if (!identity) {
+    throw new BadRequestException('Development identity headers are required.');
+  }
+  return identity;
+}
+
+export function optionalDevIdentityFromHeaders(headers: Headers): AuthenticatedUser | null {
   const userId = firstHeaderValue(headers['x-dev-user-id'])?.trim();
   const displayName = firstHeaderValue(headers['x-dev-display-name'])?.trim();
 
+  if (!userId && !displayName) return null;
   if (!userId || !displayName) {
-    throw new BadRequestException('Development identity headers are required.');
+    throw new BadRequestException('Development identity headers must be supplied together.');
   }
   if (userId.length > MAX_USER_ID_LENGTH) {
     throw new BadRequestException('Development user id is too long.');
