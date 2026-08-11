@@ -13,6 +13,7 @@ import type {
   JoinHouseRequest,
   JoinHouseResponse,
   RoomSummary,
+  UpdateHouseRequest,
 } from '@live-discussions/contracts';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
@@ -147,6 +148,35 @@ export class HousesService {
       },
       role: 'owner',
     };
+  }
+
+  async updateHouse(
+    houseId: string,
+    request: UpdateHouseRequest,
+    actor: AuthenticatedUser,
+  ): Promise<HouseSummary> {
+    await this.getHouseSummary(houseId);
+    const role = await this.getMemberRole(houseId, actor.userId);
+    if (role !== 'owner') {
+      throw new ForbiddenException('Only the House owner can edit House settings.');
+    }
+
+    if (!this.database.configured) {
+      const house = this.getHouseRecord(houseId);
+      house.name = request.name;
+      house.description = request.description;
+      return this.toSummary(house);
+    }
+
+    const result = await this.database.query<{ id: string }>(
+      `UPDATE discussion_house
+       SET name = $2, description = $3
+       WHERE id = $1
+       RETURNING id`,
+      [houseId, request.name, request.description],
+    );
+    if (!result.rows[0]) throw new NotFoundException('House not found.');
+    return this.getHouseSummary(houseId);
   }
 
   async joinHouse(request: JoinHouseRequest, user: AuthenticatedUser): Promise<JoinHouseResponse> {
