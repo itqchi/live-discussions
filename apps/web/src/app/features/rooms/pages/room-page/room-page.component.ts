@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -19,6 +20,8 @@ import { RoomFacade } from '../../data-access/room.facade';
 import type { RoomComment } from '../../data-access/room-media.service';
 import { VideoTrackComponent } from '../../ui/video-track/video-track.component';
 
+type RoomLinkActionStatus = 'idle' | 'copied' | 'shared' | 'error';
+
 @Component({
   selector: 'live-discussions-room-page',
   standalone: true,
@@ -29,15 +32,16 @@ import { VideoTrackComponent } from '../../ui/video-track/video-track.component'
 })
 export class RoomPageComponent implements OnInit {
   readonly facade = inject(RoomFacade);
+  private readonly document = inject(DOCUMENT);
   private readonly route = inject(ActivatedRoute);
   private readonly identity = inject(DevIdentityService);
   private readonly formBuilder = inject(FormBuilder);
 
   readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
-  readonly roomPath = `/room/${this.roomId}`;
   readonly displayName = this.identity.displayName;
   readonly settingsOpen = signal(false);
   readonly replyingToId = signal<string | null>(null);
+  readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
   readonly availableReactions = ROOM_REACTION_EMOJIS;
 
   readonly commentForm = this.formBuilder.nonNullable.group({
@@ -52,9 +56,11 @@ export class RoomPageComponent implements OnInit {
   closeTransientUi(): void {
     this.settingsOpen.set(false);
     this.replyingToId.set(null);
+    this.roomLinkActionStatus.set('idle');
   }
 
   openSettings(): void {
+    this.roomLinkActionStatus.set('idle');
     this.settingsOpen.set(true);
   }
 
@@ -90,6 +96,36 @@ export class RoomPageComponent implements OnInit {
     void this.facade.closeRoom().then((closed) => {
       if (closed) this.settingsOpen.set(false);
     });
+  }
+
+  async copyOrShareRoomLink(): Promise<void> {
+    const window = this.document.defaultView;
+    if (!window) {
+      this.roomLinkActionStatus.set('error');
+      return;
+    }
+
+    const slug = this.facade.roomSlug() || this.roomId;
+    const url = new URL(`/room/${encodeURIComponent(slug)}`, window.location.origin).toString();
+    const title = this.facade.roomTitle() || slug;
+
+    try {
+      if (window.navigator.clipboard?.writeText) {
+        await window.navigator.clipboard.writeText(url);
+        this.roomLinkActionStatus.set('copied');
+        return;
+      }
+
+      if (window.navigator.share) {
+        await window.navigator.share({ title, url });
+        this.roomLinkActionStatus.set('shared');
+        return;
+      }
+
+      this.roomLinkActionStatus.set('error');
+    } catch {
+      this.roomLinkActionStatus.set('error');
+    }
   }
 
   reactionEntries(comment: RoomComment): { emoji: RoomReactionEmoji; count: number }[] {
