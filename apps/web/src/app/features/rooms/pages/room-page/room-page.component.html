@@ -13,12 +13,16 @@
 
     <span
       class="w-fit rounded-full border px-3 py-2 text-sm"
-      [class.border-emerald-500]="facade.connected()"
-      [class.text-emerald-100]="facade.connected()"
-      [class.border-slate-600]="!facade.connected()"
-      [class.text-slate-400]="!facade.connected()"
+      role="status"
+      aria-live="polite"
+      [class.border-emerald-500]="facade.connectionStatus() === 'connected'"
+      [class.text-emerald-100]="facade.connectionStatus() === 'connected'"
+      [class.border-amber-500]="facade.joining() || facade.connectionStatus() === 'connecting' || facade.connectionStatus() === 'reconnecting'"
+      [class.text-amber-200]="facade.joining() || facade.connectionStatus() === 'connecting' || facade.connectionStatus() === 'reconnecting'"
+      [class.border-slate-600]="!facade.joining() && facade.connectionStatus() === 'disconnected'"
+      [class.text-slate-400]="!facade.joining() && facade.connectionStatus() === 'disconnected'"
     >
-      {{ facade.connected() ? 'Connected' : 'Not connected' }}
+      {{ facade.joining() || facade.connectionStatus() === 'connecting' ? 'Joining…' : facade.connectionStatus() === 'reconnecting' ? 'Reconnecting…' : facade.connectionStatus() === 'connected' ? 'Connected' : 'Not connected' }}
     </span>
   </header>
 
