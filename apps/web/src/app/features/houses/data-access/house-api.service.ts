@@ -11,6 +11,7 @@ import type {
   JoinHouseRequest,
   JoinHouseResponse,
   UpdateHouseMemberRoleRequest,
+  UpdateHouseRequest,
 } from '@live-discussions/contracts';
 import { API_BASE_URL } from '../../../core/api-base-url.token';
 import { apiRequestToPromise } from '../../../core/api-request.util';
@@ -38,6 +39,16 @@ export class HouseApiService {
     return apiRequestToPromise(
       this.http.post<CreateHouseResponse>(`${this.apiBaseUrl}/houses`, request),
       'Unable to create the house.',
+    );
+  }
+
+  updateHouse(houseId: string, request: UpdateHouseRequest): Promise<HouseSummary> {
+    return apiRequestToPromise(
+      this.http.patch<HouseSummary>(
+        `${this.apiBaseUrl}/houses/${encodeURIComponent(houseId)}`,
+        request,
+      ),
+      'Unable to update House settings.',
     );
   }
 
