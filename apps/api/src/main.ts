@@ -17,10 +17,11 @@ async function bootstrap(): Promise<void> {
   );
 
   // Development identity headers are temporary; keep CORS permissive only for this prototype slice.
-  app.enableCors({ origin: true, credentials: true });
+  // No cookie-based authentication is used, so credentialed CORS is intentionally disabled.
+  app.enableCors({ origin: true });
   app.enableShutdownHooks();
 
-  await app.listen(resolvePort(process.env.PORT), '0.0.0.0');
+  await app.listen(resolvePort(process.env['PORT']), '0.0.0.0');
 }
 
 function resolvePort(value: string | undefined): number {
