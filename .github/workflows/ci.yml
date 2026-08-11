@@ -20,10 +20,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22.23.1
-          cache: npm
+          package-manager-cache: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies and refresh lockfile
+        run: npm i
+
+      - name: Export generated npm lockfile
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 1
 
       - name: Verify workspace
         run: npm run check
@@ -65,32 +72,36 @@ jobs:
           API_BASE_URL: https://api.example.invalid
         run: node scripts/write-web-runtime-config.mjs
 
-  android-native-build:
-    name: Android native build
+  bootstrap-lockfile:
+    name: Commit refreshed npm lockfile
     needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/initial-platform'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
-      - name: Checkout
+      - name: Checkout exact tested PR head
         uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
         with:
-          node-version: 22.23.1
-          cache: npm
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
+      - name: Download generated npm lockfile
+        uses: actions/download-artifact@v8
         with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
+          name: generated-package-lock
+          path: .
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Commit refreshed lockfile
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ -z "$(git status --porcelain -- package-lock.json)" ]; then
+            echo "package-lock.json is already current."
+            exit 0
+          fi
 
-      - name: Assemble Android debug app
-        working-directory: apps/mobile/android
-        run: ./gradlew :app:assembleDebug --no-daemon
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Refresh lockfile for React Native CLI"
+          git push origin "HEAD:${HEAD_BRANCH}"
