@@ -69,6 +69,27 @@ export interface JoinRoomResponse {
   roomTitle: string;
 }
 
+export interface RoomCommentHistoryItem {
+  id: string;
+  participantIdentity: string;
+  participantName: string;
+  text: string;
+  timestamp: number;
+  replyToId: string | null;
+  reactions: Partial<Record<RoomReactionEmoji, string[]>>;
+}
+
+export interface CreateRoomCommentRequest {
+  id: string;
+  text: string;
+  replyToId: string | null;
+}
+
+export interface SetRoomCommentReactionRequest {
+  emoji: RoomReactionEmoji;
+  active: boolean;
+}
+
 export interface CloseRoomRequest {
   /** Public route slug for room-page requests; House APIs may resolve their stored room id directly. */
   roomId: string;
