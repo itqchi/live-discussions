@@ -31,19 +31,61 @@
   }
 
   <section class="mb-12">
-    <div class="mb-5 flex items-end justify-between gap-4">
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">LIVE NOW</p>
         <h2 class="mt-1 text-2xl font-semibold">Rooms you can join</h2>
       </div>
-      <span class="text-sm text-slate-400">{{ facade.rooms().length }} available</span>
+      <span class="text-sm text-slate-400">{{ filteredRooms().length }} of {{ facade.rooms().length }} shown</span>
+    </div>
+
+    <div class="mb-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <label class="relative block">
+        <span class="sr-only">Search rooms</span>
+        <input
+          #roomSearchInput
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-emerald-500"
+          type="search"
+          placeholder="Search room, topic, or House…"
+          [value]="roomSearch()"
+          (input)="setRoomSearch(roomSearchInput.value)"
+        />
+        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
+      </label>
+
+      <div class="flex flex-wrap gap-2" aria-label="Room access filter">
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-emerald-500]="roomAccessFilter() === 'all'"
+          [class.bg-emerald-950]="roomAccessFilter() === 'all'"
+          [class.border-slate-700]="roomAccessFilter() !== 'all'"
+          (click)="setRoomAccessFilter('all')"
+        >All</button>
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-emerald-500]="roomAccessFilter() === 'open'"
+          [class.bg-emerald-950]="roomAccessFilter() === 'open'"
+          [class.border-slate-700]="roomAccessFilter() !== 'open'"
+          (click)="setRoomAccessFilter('open')"
+        >Open</button>
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-amber-500]="roomAccessFilter() === 'locked'"
+          [class.bg-amber-950]="roomAccessFilter() === 'locked'"
+          [class.border-slate-700]="roomAccessFilter() !== 'locked'"
+          (click)="setRoomAccessFilter('locked')"
+        >Locked</button>
+      </div>
     </div>
 
     @if (facade.loading()) {
       <div class="rounded-3xl border border-slate-700 bg-slate-900/70 p-8 text-slate-400">Loading rooms…</div>
-    } @else if (facade.rooms().length) {
+    } @else if (filteredRooms().length) {
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        @for (room of facade.rooms(); track room.id) {
+        @for (room of filteredRooms(); track room.id) {
           <article class="flex min-h-52 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
             <div>
               <div class="mb-4 flex items-center justify-between gap-3">
@@ -84,6 +126,11 @@
             </button>
           </article>
         }
+      </div>
+    } @else if (facade.rooms().length) {
+      <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+        <h3 class="text-xl font-semibold">No matching rooms</h3>
+        <p class="mt-2 text-slate-400">Try another search or access filter.</p>
       </div>
     } @else {
       <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
