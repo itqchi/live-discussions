@@ -152,11 +152,46 @@
           </form>
         }
 
+        @if (facade.canEditHouse()) {
+          <form class="rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6" [formGroup]="houseForm" (ngSubmit)="saveHouseSettings()">
+            <p class="text-xs font-bold tracking-[0.2em] text-violet-300">HOUSE SETTINGS</p>
+            <h2 class="mt-2 text-xl font-semibold">House profile</h2>
+            <p class="mt-2 text-sm text-slate-400">Only the House owner can change its public name and description.</p>
+
+            <label class="mt-6 grid gap-2 text-sm text-slate-300">
+              House name
+              <input
+                class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-violet-500"
+                formControlName="name"
+                maxlength="80"
+              />
+            </label>
+
+            <label class="mt-4 grid gap-2 text-sm text-slate-300">
+              Description
+              <textarea
+                class="min-h-28 resize-y rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-violet-500"
+                formControlName="description"
+                maxlength="240"
+                placeholder="What is this House about?"
+              ></textarea>
+            </label>
+
+            <button
+              class="mt-5 w-full rounded-xl bg-violet-200 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+              type="submit"
+              [disabled]="houseForm.invalid || !houseForm.dirty || facade.updatingHouse()"
+            >
+              {{ facade.updatingHouse() ? 'Saving…' : 'Save House settings' }}
+            </button>
+          </form>
+        }
+
         <section class="overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/80">
           <div class="border-b border-slate-800 p-5">
-            <p class="text-xs font-bold tracking-[0.2em] text-violet-300">HOUSE SETTINGS</p>
+            <p class="text-xs font-bold tracking-[0.2em] text-violet-300">MEMBERS</p>
             <div class="mt-1 flex items-center justify-between gap-3">
-              <h2 class="text-xl font-semibold">Members</h2>
+              <h2 class="text-xl font-semibold">House members</h2>
               <span class="text-xs text-slate-500">{{ house.members.length }}</span>
             </div>
             @if (facade.canManageMembers()) {
