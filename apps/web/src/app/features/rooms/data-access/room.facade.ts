@@ -52,16 +52,24 @@ export class RoomFacade {
   readonly currentRole = computed<ParticipantRole>(() =>
     this.localPresence()?.role ?? this.participant()?.role ?? 'listener',
   );
-  readonly canPublishAudio = computed(() => this.currentRole() !== 'listener');
-  readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
-  readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
+  readonly isLocalOnStage = computed(() =>
+    this.localPresence()?.onStage ?? this.participant()?.onStage ?? false,
+  );
+  readonly canPublishAudio = computed(() =>
+    this.currentRole() !== 'listener' && this.isLocalOnStage(),
+  );
+  readonly canPublishVideo = computed(() =>
+    this.currentRole() !== 'listener' && this.isLocalOnStage(),
+  );
+  readonly canShareScreen = computed(() =>
+    this.currentRole() !== 'listener' && this.isLocalOnStage(),
+  );
   readonly canModerate = computed(() =>
     this.currentRole() === 'owner' || this.currentRole() === 'moderator',
   );
   readonly canCloseRoom = this.canModerate;
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
-  readonly isLocalOnStage = computed(() => this.localPresence()?.onStage ?? false);
 
   readonly ownerParticipant = computed(() =>
     this.participants().find((participant) => participant.role === 'owner') ?? null,
