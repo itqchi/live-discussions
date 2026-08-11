@@ -8,7 +8,7 @@ services:
     autoDeployTrigger: commit
     buildCommand: npm i --include=dev && npm run build:api
     startCommand: npm run start:api:production
-    healthCheckPath: /rooms
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
