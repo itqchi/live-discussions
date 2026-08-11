@@ -41,7 +41,7 @@ export class RoomsService {
   async createRoom(request: CreateRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
     const slug = roomSlugFromTitle(request.title);
     const summary = await this.memberships.createRoom(slug, request.title, user);
-    const participant = this.toParticipant(user, 'owner');
+    const participant = this.toParticipant(user, 'owner', true);
 
     return {
       room: {
@@ -58,16 +58,16 @@ export class RoomsService {
   async createJoinToken(request: JoinRoomRequest, user: AuthenticatedUser): Promise<JoinRoomResponse> {
     const { livekitUrl, apiKey, apiSecret } = this.liveKitConfig();
     const summary = await this.memberships.getRoomSummary(request.roomId);
-    const role = await this.memberships.resolveRole(summary.id, user);
-    const participant = this.toParticipant(user, role);
+    const membership = await this.memberships.resolveMembership(summary.id, user);
+    const participant = this.toParticipant(user, membership.role, membership.onStage);
 
     const token = new AccessToken(apiKey, apiSecret, {
       identity: user.userId,
       name: user.displayName,
-      metadata: JSON.stringify({ role }),
+      metadata: JSON.stringify({ role: membership.role }),
       attributes: {
         raisedHand: 'false',
-        onStage: role === 'listener' ? 'false' : 'true',
+        onStage: membership.onStage ? 'true' : 'false',
       },
       ttl: '1h',
     });
@@ -108,12 +108,13 @@ export class RoomsService {
 
   async setStagePresence(request: SetStagePresenceRequest, user: AuthenticatedUser): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
-    const role = await this.memberships.getRole(roomId, user.userId);
-    if (!role) throw new ForbiddenException('You are not a member of this room.');
-    if (role === 'listener' && request.onStage) {
+    const membership = await this.memberships.getMembership(roomId, user.userId);
+    if (!membership) throw new ForbiddenException('You are not a member of this room.');
+    if (membership.role === 'listener' && request.onStage) {
       throw new ForbiddenException('Listeners must be invited to speak before returning to the stage.');
     }
 
+    await this.memberships.setStagePresence(roomId, user.userId, request.onStage);
     await this.roomServiceClient().updateParticipant(roomId, user.userId, {
       attributes: { onStage: request.onStage ? 'true' : 'false' },
     });
@@ -149,7 +150,8 @@ export class RoomsService {
   ): Promise<void> {
     const permissions = permissionsForRole(role);
     const roomId = await this.memberships.resolveRoomId(roomIdentifier);
-    const onStage = role !== 'listener';
+    const membership = await this.memberships.getMembership(roomId, userId);
+    const onStage = membership?.onStage ?? role !== 'listener';
 
     try {
       await this.roomServiceClient().updateParticipant(roomId, userId, {
@@ -165,7 +167,7 @@ export class RoomsService {
         },
       });
     } catch (error) {
-      // Persistence is authoritative. Offline participants receive the persisted role when they next join.
+      // Persistence is authoritative. Offline participants receive the persisted role/state on their next join.
       this.logger.debug(
         `Skipped live role sync for ${userId} in room ${roomId}: ${this.errorMessage(error)}`,
       );
@@ -212,7 +214,8 @@ export class RoomsService {
     await this.memberships.setRole(roomId, request.participantId, request.role);
     const permissions = permissionsForRole(request.role);
     const roomService = this.roomServiceClient();
-    const onStage = request.role === 'speaker';
+    const membership = await this.memberships.getMembership(roomId, request.participantId);
+    const onStage = membership?.onStage ?? request.role === 'speaker';
 
     const info = await roomService.updateParticipant(roomId, request.participantId, {
       metadata: JSON.stringify({ role: request.role }),
@@ -278,14 +281,18 @@ export class RoomsService {
     }
   }
 
-  private toParticipant(user: AuthenticatedUser, role: RoomParticipant['role']): RoomParticipant {
+  private toParticipant(
+    user: AuthenticatedUser,
+    role: RoomParticipant['role'],
+    onStage = role !== 'listener',
+  ): RoomParticipant {
     return {
       userId: user.userId,
       displayName: user.displayName,
       role,
       permissions: permissionsForRole(role),
       raisedHand: false,
-      onStage: role !== 'listener',
+      onStage,
     };
   }
 
