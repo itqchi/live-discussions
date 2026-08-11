@@ -1,6 +1,11 @@
 import { DOCUMENT } from '@angular/common';
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import type { JoinRoomResponse, ParticipantRole } from '@live-discussions/contracts';
+import {
+  isRoomReactionEmoji,
+  type JoinRoomResponse,
+  type ParticipantRole,
+  type RoomReactionEmoji,
+} from '@live-discussions/contracts';
 import {
   DisconnectReason,
   type LocalVideoTrack,
@@ -37,7 +42,7 @@ export interface RoomComment {
 export interface StageReaction {
   id: string;
   participantIdentity: string;
-  emoji: string;
+  emoji: RoomReactionEmoji;
 }
 
 export interface VideoTile {
@@ -58,6 +63,8 @@ const COMMENT_REACTIONS_TOPIC = 'live-discussions.comment-reactions';
 const STAGE_REACTIONS_TOPIC = 'live-discussions.stage-reactions';
 const COMMENTS_CACHE_PREFIX = 'live-discussions.room-comments.';
 const MAX_CACHED_COMMENTS = 200;
+const MAX_COMMENT_LENGTH = 1000;
+const MAX_REPLY_ID_LENGTH = 160;
 const STAGE_REACTION_DURATION_MS = 3500;
 
 @Injectable()
@@ -85,7 +92,12 @@ export class RoomMediaService {
   constructor() {
     this.room.registerTextStreamHandler(COMMENTS_TOPIC, async (reader, participantInfo) => {
       const text = (await reader.readAll()).trim();
-      if (!text) return;
+      if (!text || text.length > MAX_COMMENT_LENGTH) return;
+
+      const rawReplyToId = reader.info.attributes?.['replyToId'];
+      const replyToId = rawReplyToId && rawReplyToId.length <= MAX_REPLY_ID_LENGTH
+        ? rawReplyToId
+        : null;
 
       this.appendComment({
         id: reader.info.id,
@@ -94,7 +106,7 @@ export class RoomMediaService {
         text,
         timestamp: reader.info.timestamp,
         isLocal: false,
-        replyToId: reader.info.attributes?.['replyToId'] || null,
+        replyToId,
         reactions: {},
       });
     });
@@ -103,15 +115,16 @@ export class RoomMediaService {
       const emoji = (await reader.readAll()).trim();
       const commentId = reader.info.attributes?.['commentId'];
       const action = reader.info.attributes?.['action'] === 'remove' ? 'remove' : 'add';
-      if (emoji && commentId) {
+      if (isRoomReactionEmoji(emoji) && commentId) {
         this.applyCommentReaction(commentId, emoji, participantInfo.identity, action);
       }
     });
 
     this.room.registerTextStreamHandler(STAGE_REACTIONS_TOPIC, async (reader, participantInfo) => {
       const emoji = (await reader.readAll()).trim();
-      const targetIdentity = reader.info.attributes?.['targetIdentity'] || participantInfo.identity;
-      if (emoji) this.showStageReaction(targetIdentity, emoji, reader.info.id);
+      if (isRoomReactionEmoji(emoji)) {
+        this.showStageReaction(participantInfo.identity, emoji, reader.info.id);
+      }
     });
 
     this.room.on(RoomEvent.Connected, () => {
@@ -241,6 +254,12 @@ export class RoomMediaService {
   async sendComment(text: string, replyToId: string | null = null): Promise<void> {
     const normalizedText = text.trim();
     if (!normalizedText || !this.connected()) return;
+    if (normalizedText.length > MAX_COMMENT_LENGTH) {
+      throw new Error(`Comments can be up to ${MAX_COMMENT_LENGTH} characters.`);
+    }
+    if (replyToId && replyToId.length > MAX_REPLY_ID_LENGTH) {
+      throw new Error('The reply reference is invalid.');
+    }
 
     const info = await this.room.localParticipant.sendText(normalizedText, {
       topic: COMMENTS_TOPIC,
@@ -259,9 +278,9 @@ export class RoomMediaService {
     });
   }
 
-  async toggleCommentReaction(commentId: string, emoji: string): Promise<void> {
+  async toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<void> {
     const comment = this.comments().find((item) => item.id === commentId);
-    if (!comment || !this.connected()) return;
+    if (!comment || !this.connected() || !isRoomReactionEmoji(emoji)) return;
 
     const identity = this.room.localParticipant.identity;
     const action = comment.reactions[emoji]?.includes(identity) ? 'remove' : 'add';
@@ -272,12 +291,11 @@ export class RoomMediaService {
     this.applyCommentReaction(commentId, emoji, identity, action);
   }
 
-  async sendStageReaction(emoji: string): Promise<void> {
-    if (!this.connected()) return;
+  async sendStageReaction(emoji: RoomReactionEmoji): Promise<void> {
+    if (!this.connected() || !isRoomReactionEmoji(emoji)) return;
 
     const info = await this.room.localParticipant.sendText(emoji, {
       topic: STAGE_REACTIONS_TOPIC,
-      attributes: { targetIdentity: this.room.localParticipant.identity },
     });
     this.showStageReaction(this.room.localParticipant.identity, emoji, info.id);
   }
@@ -314,7 +332,7 @@ export class RoomMediaService {
 
   private applyCommentReaction(
     commentId: string,
-    emoji: string,
+    emoji: RoomReactionEmoji,
     identity: string,
     action: 'add' | 'remove',
   ): void {
@@ -338,7 +356,11 @@ export class RoomMediaService {
     });
   }
 
-  private showStageReaction(participantIdentity: string, emoji: string, id: string): void {
+  private showStageReaction(
+    participantIdentity: string,
+    emoji: RoomReactionEmoji,
+    id: string,
+  ): void {
     const existingTimer = this.stageReactionTimers.get(participantIdentity);
     if (existingTimer) clearTimeout(existingTimer);
 
@@ -404,6 +426,7 @@ export class RoomMediaService {
       || typeof comment.participantIdentity !== 'string'
       || typeof comment.participantName !== 'string'
       || typeof comment.text !== 'string'
+      || comment.text.length > MAX_COMMENT_LENGTH
     ) {
       return null;
     }
@@ -411,13 +434,18 @@ export class RoomMediaService {
     const reactions: Record<string, string[]> = {};
     if (comment.reactions && typeof comment.reactions === 'object') {
       for (const [emoji, identities] of Object.entries(comment.reactions)) {
-        if (Array.isArray(identities)) {
+        if (isRoomReactionEmoji(emoji) && Array.isArray(identities)) {
           reactions[emoji] = identities.filter(
             (identity): identity is string => typeof identity === 'string',
           );
         }
       }
     }
+
+    const replyToId = typeof comment.replyToId === 'string'
+      && comment.replyToId.length <= MAX_REPLY_ID_LENGTH
+      ? comment.replyToId
+      : null;
 
     return {
       id: comment.id,
@@ -426,7 +454,7 @@ export class RoomMediaService {
       text: comment.text,
       timestamp: typeof comment.timestamp === 'number' ? comment.timestamp : Date.now(),
       isLocal: comment.isLocal === true,
-      replyToId: typeof comment.replyToId === 'string' ? comment.replyToId : null,
+      replyToId,
       reactions,
     };
   }
