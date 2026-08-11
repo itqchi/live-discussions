@@ -20,13 +20,19 @@ export class HomeFacade {
   readonly loading = signal(false);
   readonly creatingRoom = signal(false);
   readonly creatingHouse = signal(false);
+  readonly joiningHouseId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
 
   async load(): Promise<void> {
+    if (this.loading()) return;
+
     this.loading.set(true);
     this.error.set(null);
     try {
-      const [rooms, houses] = await Promise.all([this.roomsApi.listRooms(), this.housesApi.listHouses()]);
+      const [rooms, houses] = await Promise.all([
+        this.roomsApi.listRooms(),
+        this.housesApi.listHouses(),
+      ]);
       this.rooms.set(rooms);
       this.houses.set(houses);
     } catch (error) {
@@ -57,6 +63,8 @@ export class HomeFacade {
   }
 
   async createRoom(title: string): Promise<void> {
+    if (this.creatingRoom()) return;
+
     const normalizedTitle = title.trim();
     if (!normalizedTitle || !this.requireDisplayName()) {
       if (!normalizedTitle) this.error.set('Enter a room title.');
@@ -77,6 +85,8 @@ export class HomeFacade {
   }
 
   async createHouse(name: string, description: string): Promise<void> {
+    if (this.creatingHouse()) return;
+
     const normalizedName = name.trim();
     if (!normalizedName || !this.requireDisplayName()) {
       if (!normalizedName) this.error.set('Enter a house name.');
@@ -99,13 +109,17 @@ export class HomeFacade {
   }
 
   async joinHouse(houseId: string): Promise<void> {
-    if (!this.requireDisplayName()) return;
+    if (this.joiningHouseId() || !this.requireDisplayName()) return;
+
+    this.joiningHouseId.set(houseId);
     this.error.set(null);
     try {
       await this.housesApi.joinHouse({ houseId });
       await this.router.navigate(['/houses', houseId]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to join the house.'));
+    } finally {
+      this.joiningHouseId.set(null);
     }
   }
 
