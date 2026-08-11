@@ -15,14 +15,33 @@
         "polyfills": ["zone.js"],
         "assets": ["apps/web/src/runtime-config.js"],
         "styles": ["apps/web/src/styles.css"]
-      }
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "sourceMap": false,
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "sourceMap": true,
+          "outputHashing": "none"
+        }
+      },
+      "defaultConfiguration": "production"
     },
     "serve": {
       "continuous": true,
       "executor": "@nx/angular:dev-server",
-      "options": {
-        "buildTarget": "web:build"
-      }
+      "configurations": {
+        "production": {
+          "buildTarget": "web:build:production"
+        },
+        "development": {
+          "buildTarget": "web:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
     }
   }
 }
