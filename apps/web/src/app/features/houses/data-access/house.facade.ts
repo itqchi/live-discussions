@@ -18,10 +18,12 @@ export class HouseFacade {
   readonly loading = signal(false);
   readonly joining = signal(false);
   readonly creatingRoom = signal(false);
+  readonly updatingHouse = signal(false);
   readonly updatingMemberId = signal<string | null>(null);
   readonly closingRoomId = signal<string | null>(null);
   readonly error = signal<string | null>(null);
 
+  readonly canEditHouse = computed(() => this.role() === 'owner');
   readonly canManageMembers = computed(() => this.role() === 'owner');
   readonly canManageRooms = computed(() => this.role() === 'owner' || this.role() === 'admin');
 
@@ -41,6 +43,33 @@ export class HouseFacade {
 
   setDisplayName(displayName: string): void {
     this.identity.setDisplayName(displayName);
+  }
+
+  async updateHouse(name: string, description: string): Promise<boolean> {
+    const house = this.house();
+    const normalizedName = name.trim();
+    const normalizedDescription = description.trim();
+    if (this.updatingHouse() || !house || !this.canEditHouse()) return false;
+    if (!normalizedName) {
+      this.error.set('Enter a House name.');
+      return false;
+    }
+
+    this.updatingHouse.set(true);
+    this.error.set(null);
+    try {
+      const summary = await this.api.updateHouse(house.id, {
+        name: normalizedName,
+        description: normalizedDescription,
+      });
+      this.house.update((current) => current ? { ...current, ...summary } : current);
+      return true;
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to update House settings.'));
+      return false;
+    } finally {
+      this.updatingHouse.set(false);
+    }
   }
 
   async join(): Promise<void> {
