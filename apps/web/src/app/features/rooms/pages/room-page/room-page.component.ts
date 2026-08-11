@@ -8,7 +8,11 @@ import {
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ROOM_REACTION_EMOJIS } from '@live-discussions/contracts';
+import {
+  ROOM_REACTION_EMOJIS,
+  isRoomReactionEmoji,
+  type RoomReactionEmoji,
+} from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
 import { DismissibleDetailsDirective } from '../../../../shared/ui/dismissible-details.directive';
 import { RoomFacade } from '../../data-access/room.facade';
@@ -88,9 +92,11 @@ export class RoomPageComponent implements OnInit {
     });
   }
 
-  reactionEntries(comment: RoomComment): { emoji: string; count: number }[] {
+  reactionEntries(comment: RoomComment): { emoji: RoomReactionEmoji; count: number }[] {
     return Object.entries(comment.reactions ?? {})
-      .filter(([, identities]) => identities.length > 0)
+      .filter((entry): entry is [RoomReactionEmoji, string[]] =>
+        isRoomReactionEmoji(entry[0]) && entry[1].length > 0,
+      )
       .map(([emoji, identities]) => ({ emoji, count: identities.length }));
   }
 
