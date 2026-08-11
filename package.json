@@ -15,7 +15,7 @@
     "migrate:api": "node scripts/migrate-api.mjs",
     "build:contracts": "nx build contracts",
     "build:web": "nx build web",
-    "build:web:render": "node scripts/write-web-runtime-config.mjs && nx build web",
+    "build:web:render": "nx build web && node scripts/write-web-runtime-config.mjs",
     "build:api": "nx build api",
     "build": "nx run-many -t build -p contracts web api",
     "typecheck:mobile": "nx typecheck mobile",
