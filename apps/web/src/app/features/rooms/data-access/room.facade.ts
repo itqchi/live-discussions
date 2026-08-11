@@ -15,6 +15,8 @@ import { RoomNavigationService } from '../../../core/room-navigation.service';
 import { RoomApiService } from './room-api.service';
 import { RoomMediaService, type RoomComment, type VideoTile } from './room-media.service';
 
+const SHARED_ROOM_RECONCILE_INTERVAL_MS = 10_000;
+
 @Injectable()
 export class RoomFacade {
   private readonly api = inject(RoomApiService);
@@ -126,6 +128,17 @@ export class RoomFacade {
       if (this.media.roomDeleted() && !this.closingRoom()) {
         void this.returnToOrigin();
       }
+    });
+
+    effect((onCleanup) => {
+      const roomId = this.roomId();
+      if (!roomId || !this.connected()) return;
+
+      const interval = setInterval(
+        () => void this.reconcileSharedRoomState(roomId),
+        SHARED_ROOM_RECONCILE_INTERVAL_MS,
+      );
+      onCleanup(() => clearInterval(interval));
     });
   }
 
@@ -487,6 +500,22 @@ export class RoomFacade {
       () => this.api.updateParticipantRole({ roomId, participantId, role }),
       'Unable to update participant role.',
     );
+  }
+
+  private async reconcileSharedRoomState(roomId: string): Promise<void> {
+    try {
+      const [room, history] = await Promise.all([
+        this.api.getRoom(roomId),
+        this.api.listComments(roomId),
+      ]);
+      if (this.roomId() !== roomId || !this.connected()) return;
+
+      this.applyRoomSummary(room);
+      this.media.hydrateComments(history);
+      this.applyPinnedHistory(history);
+    } catch {
+      // Realtime media remains usable; the next reconciliation attempt can recover shared state.
+    }
   }
 
   private applyPinnedHistory(history: RoomCommentHistoryItem[]): void {
