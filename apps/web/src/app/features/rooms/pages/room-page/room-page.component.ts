@@ -44,6 +44,10 @@ export class RoomPageComponent implements OnInit {
   readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
   readonly availableReactions = ROOM_REACTION_EMOJIS;
 
+  readonly joinForm = this.formBuilder.nonNullable.group({
+    displayName: [this.displayName(), [Validators.required, Validators.maxLength(80)]],
+  });
+
   readonly commentForm = this.formBuilder.nonNullable.group({
     comment: ['', [Validators.required, Validators.maxLength(1000)]],
   });
@@ -65,8 +69,13 @@ export class RoomPageComponent implements OnInit {
   }
 
   join(): void {
-    if (!this.roomId || !this.displayName() || this.facade.connected() || this.facade.joining()) return;
-    void this.facade.join(this.roomId, this.displayName());
+    const requestedDisplayName = (this.displayName() || this.joinForm.controls.displayName.value).trim();
+    if (!this.roomId || !requestedDisplayName || this.facade.connected() || this.facade.joining()) {
+      if (!requestedDisplayName) this.joinForm.markAllAsTouched();
+      return;
+    }
+
+    void this.facade.join(this.roomId, requestedDisplayName);
   }
 
   sendComment(): void {
