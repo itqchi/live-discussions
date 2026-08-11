@@ -1,6 +1,13 @@
 export type ParticipantRole = 'owner' | 'moderator' | 'speaker' | 'listener';
 export type ModeratedParticipantRole = Extract<ParticipantRole, 'speaker' | 'listener'>;
 
+export const ROOM_REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🔥'] as const;
+export type RoomReactionEmoji = (typeof ROOM_REACTION_EMOJIS)[number];
+
+export function isRoomReactionEmoji(value: string): value is RoomReactionEmoji {
+  return (ROOM_REACTION_EMOJIS as readonly string[]).includes(value);
+}
+
 export interface ParticipantPermissions {
   canPublishAudio: boolean;
   canPublishVideo: boolean;
