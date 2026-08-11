@@ -67,10 +67,10 @@ DATABASE_URL=postgresql://...
 
 ## Install and run
 
-The repository targets Node `22.23.1` and npm `10.9.8`.
+The repository targets Node `22.23.1` and npm `10.9.8`. A committed npm lockfile is the dependency source of truth, so use `npm ci` for reproducible installs.
 
 ```bash
-npm install
+npm ci
 npm run api
 npm run web
 ```
@@ -85,13 +85,17 @@ npm run build:contracts
 npm run typecheck:mobile
 npm run migrate:api      # applies PostgreSQL migrations; no-op in memory mode
 npm run mobile           # Metro bundler
-npm run mobile:ios       # requires the native iOS host project described below
-npm run mobile:android   # requires the native Android host project described below
+npm run mobile:ios       # preflights the native iOS host project described below
+npm run mobile:android   # preflights the native Android host project described below
 ```
+
+CI and Render builds also use `npm ci` so they install the dependency graph recorded in `package-lock.json` rather than resolving a new graph on each build.
 
 ## React Native host setup
 
 The repository currently contains the React Native JavaScript/TypeScript application, Nx targets, LiveKit dependencies, and `registerGlobals()` setup, but it does **not** yet commit `apps/mobile/ios` or `apps/mobile/android`. The `run-ios` and `run-android` targets therefore remain incomplete until native host projects are generated and reviewed.
+
+`npm run mobile:ios` and `npm run mobile:android` run a native-host preflight first and report the missing platform directory with a pointer back to this setup section instead of failing later inside Nx.
 
 Use the matching `@nx/react-native` generator on a clean branch to create/regenerate the native host projects. The Nx native upgrade generator replaces the iOS/Android native folders, so generated changes should be reviewed before committing.
 
