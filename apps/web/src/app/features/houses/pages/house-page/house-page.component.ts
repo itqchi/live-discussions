@@ -21,7 +21,9 @@ export class HousePageComponent implements OnInit {
   });
 
   readonly roomForm = this.formBuilder.nonNullable.group({
-    title: ['', [Validators.required, Validators.maxLength(120)]],
+    title: ['', [Validators.required, Validators.maxLength(100)]],
+    description: ['', [Validators.maxLength(500)]],
+    isLocked: [false],
   });
 
   readonly houseForm = this.formBuilder.nonNullable.group({
@@ -84,7 +86,8 @@ export class HousePageComponent implements OnInit {
       return;
     }
 
-    void this.facade.createRoom(this.roomForm.controls.title.value);
+    const { title, description, isLocked } = this.roomForm.getRawValue();
+    void this.facade.createRoom(title, description, isLocked);
   }
 
   joinRoom(roomId: string): void {
