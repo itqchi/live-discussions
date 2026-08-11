@@ -44,6 +44,7 @@ export class RoomPageComponent implements OnInit {
   readonly roomId = signal(this.route.snapshot.paramMap.get('roomId') ?? '');
   readonly displayName = this.identity.displayName;
   readonly settingsOpen = signal(false);
+  readonly settingsSaved = signal(false);
   readonly replyingToId = signal<string | null>(null);
   readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
   readonly availableReactions = ROOM_REACTION_EMOJIS;
@@ -62,6 +63,12 @@ export class RoomPageComponent implements OnInit {
     comment: ['', [Validators.required, Validators.maxLength(1000)]],
   });
 
+  readonly settingsForm = this.formBuilder.nonNullable.group({
+    title: ['', [Validators.required, Validators.maxLength(100)]],
+    description: ['', [Validators.maxLength(500)]],
+    isLocked: [false],
+  });
+
   ngOnInit(): void {
     this.route.paramMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -75,19 +82,43 @@ export class RoomPageComponent implements OnInit {
         void this.facade.switchRoom(nextRoomId, this.displayName());
       });
 
-    if (this.roomId() && this.displayName()) this.join();
+    if (!this.roomId()) return;
+    if (this.displayName()) this.join();
+    else void this.facade.loadRoomDetails(this.roomId());
   }
 
   @HostListener('document:keydown.escape')
   closeTransientUi(): void {
     this.settingsOpen.set(false);
+    this.settingsSaved.set(false);
     this.replyingToId.set(null);
     this.roomLinkActionStatus.set('idle');
   }
 
   openSettings(): void {
     this.roomLinkActionStatus.set('idle');
+    this.settingsSaved.set(false);
+    this.settingsForm.reset({
+      title: this.facade.roomTitle() || this.roomId(),
+      description: this.facade.roomDescription(),
+      isLocked: this.facade.roomLocked(),
+    });
     this.settingsOpen.set(true);
+  }
+
+  saveSettings(): void {
+    if (this.settingsForm.invalid || !this.facade.canEditRoomSettings()) {
+      this.settingsForm.markAllAsTouched();
+      return;
+    }
+
+    this.settingsSaved.set(false);
+    const value = this.settingsForm.getRawValue();
+    void this.facade.updateRoomSettings({
+      title: value.title.trim(),
+      description: value.description.trim(),
+      isLocked: value.isLocked,
+    }).then((saved) => this.settingsSaved.set(saved));
   }
 
   join(): void {
