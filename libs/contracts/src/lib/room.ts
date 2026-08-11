@@ -87,6 +87,7 @@ export interface RoomCommentHistoryItem {
   timestamp: number;
   replyToId: string | null;
   reactions: Partial<Record<RoomReactionEmoji, string[]>>;
+  pinned: boolean;
 }
 
 export interface CreateRoomCommentRequest {
@@ -98,6 +99,10 @@ export interface CreateRoomCommentRequest {
 export interface SetRoomCommentReactionRequest {
   emoji: RoomReactionEmoji;
   active: boolean;
+}
+
+export interface SetRoomCommentPinnedRequest {
+  pinned: boolean;
 }
 
 export interface CloseRoomRequest {
