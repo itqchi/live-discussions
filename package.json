@@ -12,6 +12,7 @@
     "graph": "nx graph",
     "web": "nx serve web",
     "api": "node scripts/serve-api.mjs",
+    "migrate:api": "node scripts/migrate-api.mjs",
     "build:contracts": "nx build contracts",
     "build:web": "nx build web",
     "build:web:render": "node scripts/write-web-runtime-config.mjs && nx build web",
