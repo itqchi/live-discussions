@@ -18,7 +18,10 @@ import type {
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { permissionsForRole } from './room-permissions';
-import { RoomMembershipService } from './room-membership.service';
+import {
+  RoomMembershipService,
+  type RoomMembershipState,
+} from './room-membership.service';
 import { roomSlugFromTitle } from './room-slug';
 
 interface LiveRoomMetadata {
@@ -108,16 +111,23 @@ export class RoomsService {
 
   async setStagePresence(request: SetStagePresenceRequest, user: AuthenticatedUser): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
-    const membership = await this.memberships.getMembership(roomId, user.userId);
-    if (!membership) throw new ForbiddenException('You are not a member of this room.');
-    if (membership.role === 'listener' && request.onStage) {
+    const previous = await this.memberships.getMembership(roomId, user.userId);
+    if (!previous) throw new ForbiddenException('You are not a member of this room.');
+    if (previous.role === 'listener' && request.onStage) {
       throw new ForbiddenException('Listeners must be invited to speak before returning to the stage.');
     }
 
-    await this.memberships.setStagePresence(roomId, user.userId, request.onStage);
-    await this.roomServiceClient().updateParticipant(roomId, user.userId, {
-      attributes: { onStage: request.onStage ? 'true' : 'false' },
-    });
+    const next: RoomMembershipState = { ...previous, onStage: request.onStage };
+    await this.memberships.setMembershipState(roomId, user.userId, next);
+
+    try {
+      await this.roomServiceClient().updateParticipant(roomId, user.userId, {
+        attributes: { onStage: request.onStage ? 'true' : 'false' },
+      });
+    } catch (error) {
+      await this.restoreParticipantState(roomId, user.userId, previous);
+      throw error;
+    }
   }
 
   async setFeaturedParticipant(
@@ -205,44 +215,91 @@ export class RoomsService {
   ): Promise<RoomParticipant> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
     await this.assertCanModerate(roomId, actor.userId);
-    const targetMembership = await this.memberships.getMembership(roomId, request.participantId);
+    const previous = await this.memberships.getMembership(roomId, request.participantId);
 
-    if (!targetMembership) throw new ForbiddenException('Participant is not a room member.');
-    if (targetMembership.role === 'owner') {
+    if (!previous) throw new ForbiddenException('Participant is not a room member.');
+    if (previous.role === 'owner') {
       throw new ForbiddenException('The room owner role cannot be changed here.');
     }
-    if (targetMembership.role === 'moderator') {
+    if (previous.role === 'moderator') {
       throw new ForbiddenException(
         'A House admin role cannot be changed from the room. Use House Settings instead.',
       );
     }
 
-    await this.memberships.setRole(roomId, request.participantId, request.role);
-    const permissions = permissionsForRole(request.role);
-    const roomService = this.roomServiceClient();
-    const membership = await this.memberships.getMembership(roomId, request.participantId);
-    const onStage = membership?.onStage ?? request.role === 'speaker';
+    const next: RoomMembershipState = {
+      role: request.role,
+      onStage: request.role === 'speaker',
+    };
+    await this.memberships.setMembershipState(roomId, request.participantId, next);
 
-    const info = await roomService.updateParticipant(roomId, request.participantId, {
-      metadata: JSON.stringify({ role: request.role }),
+    const roomService = this.roomServiceClient();
+    try {
+      const info = await roomService.updateParticipant(
+        roomId,
+        request.participantId,
+        this.participantUpdate(next),
+      );
+
+      return {
+        userId: info.identity,
+        displayName: info.name || info.identity,
+        role: next.role,
+        permissions: permissionsForRole(next.role),
+        raisedHand: false,
+        onStage: next.onStage,
+      };
+    } catch (error) {
+      await this.restoreParticipantState(roomId, request.participantId, previous);
+      throw error;
+    }
+  }
+
+  private async restoreParticipantState(
+    roomId: string,
+    userId: string,
+    state: RoomMembershipState,
+  ): Promise<void> {
+    await this.memberships.setMembershipState(roomId, userId, state);
+    const roomService = this.roomServiceClient();
+
+    try {
+      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state));
+    } catch (rollbackError) {
+      this.logger.warn(
+        `Unable to restore live participant ${userId} in room ${roomId}: ${this.errorMessage(rollbackError)}`,
+      );
+      try {
+        await roomService.removeParticipant(roomId, userId);
+      } catch (removeError) {
+        this.logger.error(
+          `Unable to disconnect inconsistent participant ${userId} from room ${roomId}: ${this.errorMessage(removeError)}`,
+        );
+      }
+    }
+  }
+
+  private participantUpdate(state: RoomMembershipState): {
+    metadata: string;
+    attributes: Record<string, string>;
+    permission: {
+      canSubscribe: boolean;
+      canPublish: boolean;
+      canPublishData: boolean;
+    };
+  } {
+    const permissions = permissionsForRole(state.role);
+    return {
+      metadata: JSON.stringify({ role: state.role }),
       attributes: {
         raisedHand: 'false',
-        onStage: onStage ? 'true' : 'false',
+        onStage: state.onStage ? 'true' : 'false',
       },
       permission: {
         canSubscribe: true,
         canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
         canPublishData: true,
       },
-    });
-
-    return {
-      userId: info.identity,
-      displayName: info.name || info.identity,
-      role: request.role,
-      permissions,
-      raisedHand: false,
-      onStage,
     };
   }
 
