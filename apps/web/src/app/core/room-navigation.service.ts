@@ -14,10 +14,8 @@ export class RoomNavigationService {
     return this.normalizeOrigin(this.storage.getLocal(`${this.prefix}${roomSlug}`));
   }
 
-  consumeOrigin(roomSlug: string): string {
-    const origin = this.originFor(roomSlug);
+  clearOrigin(roomSlug: string): void {
     this.storage.removeLocal(`${this.prefix}${roomSlug}`);
-    return origin;
   }
 
   private normalizeOrigin(origin: string | null | undefined): string {
