@@ -88,6 +88,7 @@ export class RoomsService {
       participant,
       roomId: summary.id,
       roomSlug: summary.slug,
+      roomTitle: summary.title,
     };
   }
 
