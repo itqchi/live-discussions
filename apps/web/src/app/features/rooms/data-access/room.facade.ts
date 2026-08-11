@@ -39,6 +39,8 @@ export class RoomFacade {
   readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
+  readonly roomTitle = signal<string | null>(null);
+  readonly roomSlug = signal<string | null>(null);
 
   private readonly roomId = signal<string | null>(null);
 
@@ -123,8 +125,12 @@ export class RoomFacade {
       const session = await this.api.joinRoom(request);
       await this.media.connect(session);
       this.participant.set(session.participant);
+      this.roomTitle.set(session.roomTitle);
+      this.roomSlug.set(session.roomSlug);
     } catch (error) {
       this.participant.set(null);
+      this.roomTitle.set(null);
+      this.roomSlug.set(null);
       try {
         await this.media.disconnect();
       } catch {
@@ -335,6 +341,8 @@ export class RoomFacade {
 
       this.navigation.clearOrigin(roomSlug);
       this.participant.set(null);
+      this.roomTitle.set(null);
+      this.roomSlug.set(null);
       this.roomId.set(null);
       this.error.set(null);
     } catch (error) {
