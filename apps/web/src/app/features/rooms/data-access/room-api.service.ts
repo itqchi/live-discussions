@@ -2,15 +2,18 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
   CloseRoomRequest,
+  CreateRoomCommentRequest,
   CreateRoomRequest,
   CreateRoomResponse,
   JoinRoomRequest,
   JoinRoomResponse,
   RaiseHandRequest,
   RemoveParticipantRequest,
+  RoomCommentHistoryItem,
   RoomParticipant,
   RoomSummary,
   SetFeaturedParticipantRequest,
+  SetRoomCommentReactionRequest,
   SetStagePresenceRequest,
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
@@ -40,6 +43,42 @@ export class RoomApiService {
     return apiRequestToPromise(
       this.http.post<JoinRoomResponse>(`${this.apiBaseUrl}/rooms/join`, request),
       'Unable to join the room.',
+    );
+  }
+
+  listComments(roomId: string): Promise<RoomCommentHistoryItem[]> {
+    return apiRequestToPromise(
+      this.http.get<RoomCommentHistoryItem[]>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/comments`,
+      ),
+      'Unable to load shared comment history.',
+    );
+  }
+
+  createComment(
+    roomId: string,
+    request: CreateRoomCommentRequest,
+  ): Promise<RoomCommentHistoryItem> {
+    return apiRequestToPromise(
+      this.http.post<RoomCommentHistoryItem>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/comments`,
+        request,
+      ),
+      'Unable to save this comment to shared history.',
+    );
+  }
+
+  setCommentReaction(
+    roomId: string,
+    commentId: string,
+    request: SetRoomCommentReactionRequest,
+  ): Promise<void> {
+    return apiRequestToPromise(
+      this.http.patch<void>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/comments/${encodeURIComponent(commentId)}/reaction`,
+        request,
+      ),
+      'Unable to save this reaction to shared history.',
     );
   }
 
