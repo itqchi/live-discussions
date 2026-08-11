@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import type {
   AuthenticatedUser,
   CreateRoomResponse,
@@ -10,7 +20,6 @@ import { DevUser } from '../auth/dev-user.decorator';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
-import { RemoveParticipantDto } from './dto/remove-participant.dto';
 import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
 import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
@@ -42,6 +51,7 @@ export class RoomsController {
   }
 
   @Patch('hand')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async setRaisedHand(
     @Body() request: RaiseHandDto,
     @DevUser() user: AuthenticatedUser,
@@ -50,6 +60,7 @@ export class RoomsController {
   }
 
   @Patch('stage-presence')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async setStagePresence(
     @Body() request: SetStagePresenceDto,
     @DevUser() user: AuthenticatedUser,
@@ -58,6 +69,7 @@ export class RoomsController {
   }
 
   @Patch('featured-participant')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async setFeaturedParticipant(
     @Body() request: SetFeaturedParticipantDto,
     @DevUser() user: AuthenticatedUser,
@@ -73,15 +85,18 @@ export class RoomsController {
     return this.roomsService.updateParticipantRole(request, user);
   }
 
-  @Delete('participants')
+  @Delete(':roomId/participants/:participantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async removeParticipant(
-    @Body() request: RemoveParticipantDto,
+    @Param('roomId') roomId: string,
+    @Param('participantId') participantId: string,
     @DevUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.roomsService.removeParticipant(request, user);
+    await this.roomsService.removeParticipant({ roomId, participantId }, user);
   }
 
   @Delete(':roomId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async closeRoom(
     @Param('roomId') roomId: string,
     @DevUser() user: AuthenticatedUser,
