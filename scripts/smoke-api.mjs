@@ -1,6 +1,7 @@
 const apiBaseUrl = (process.env['API_BASE_URL'] ?? 'http://127.0.0.1:3100').replace(/\/+$/, '');
 const ownerHeaders = devHeaders('ci-owner', 'CI Owner');
 const memberHeaders = devHeaders('ci-member', 'CI Member');
+const newcomerHeaders = devHeaders('ci-newcomer', 'CI Newcomer');
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 await expectJson('GET', '/health', undefined, undefined, 200, (body) => {
@@ -67,6 +68,78 @@ await expectJson(
   201,
   (body) => {
     assert(body.participant?.role === 'listener', 'New room member must join as listener.');
+  },
+);
+
+await expectJson(
+  'GET',
+  `/rooms/${encodeURIComponent(standalone.room.slug)}`,
+  undefined,
+  undefined,
+  200,
+  (body) => {
+    assert(body.slug === standalone.room.slug, 'Public room read returned the wrong slug.');
+    assert(body.description === '', 'New room description must default to empty.');
+    assert(body.isLocked === false, 'New room must default to unlocked.');
+  },
+);
+
+await expectStatus(
+  'PATCH',
+  `/rooms/${encodeURIComponent(standalone.room.slug)}/settings`,
+  { title: 'Member Rename Attempt', description: 'Must be rejected.', isLocked: true },
+  memberHeaders,
+  403,
+);
+
+await expectJson(
+  'PATCH',
+  `/rooms/${encodeURIComponent(standalone.room.slug)}/settings`,
+  {
+    title: 'CI Standalone Room Updated',
+    description: 'Room profile and lock smoke test.',
+    isLocked: true,
+  },
+  ownerHeaders,
+  200,
+  (body) => {
+    assert(body.title === 'CI Standalone Room Updated', 'Room title update did not persist.');
+    assert(body.description === 'Room profile and lock smoke test.', 'Room description update did not persist.');
+    assert(body.isLocked === true, 'Room lock state did not persist.');
+    assert(body.slug === standalone.room.slug, 'Editing the room title must not change its public slug.');
+  },
+);
+
+await expectStatus(
+  'POST',
+  '/rooms/join',
+  { roomId: standalone.room.slug },
+  newcomerHeaders,
+  403,
+);
+
+await expectJson(
+  'POST',
+  '/rooms/join',
+  { roomId: standalone.room.slug },
+  memberHeaders,
+  201,
+  (body) => {
+    assert(body.participant?.role === 'listener', 'Existing room member must be able to reconnect while locked.');
+    assert(body.roomTitle === 'CI Standalone Room Updated', 'Reconnect did not receive the updated room title.');
+  },
+);
+
+await expectJson(
+  'GET',
+  `/rooms/${encodeURIComponent(standalone.room.slug)}`,
+  undefined,
+  undefined,
+  200,
+  (body) => {
+    assert(body.title === 'CI Standalone Room Updated', 'Fresh room read did not return the updated title.');
+    assert(body.description === 'Room profile and lock smoke test.', 'Fresh room read did not return the updated description.');
+    assert(body.isLocked === true, 'Fresh room read did not return the locked state.');
   },
 );
 
