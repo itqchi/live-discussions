@@ -1,14 +1,14 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import {
-  isRoomReactionEmoji,
-  type AuthenticatedUser,
-  type CreateRoomCommentRequest,
-  type RoomCommentHistoryItem,
-  type RoomReactionEmoji,
-  type SetRoomCommentReactionRequest,
+import type {
+  AuthenticatedUser,
+  CreateRoomCommentRequest,
+  RoomCommentHistoryItem,
+  RoomReactionEmoji,
+  SetRoomCommentReactionRequest,
 } from '@live-discussions/contracts';
 import { DatabaseService } from '../database/database.service';
 import { RoomMembershipService } from './room-membership.service';
+import { isRoomReactionEmoji } from './room-reactions';
 
 interface MemoryComment {
   id: string;
