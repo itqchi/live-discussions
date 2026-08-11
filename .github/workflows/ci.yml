@@ -130,3 +130,42 @@ jobs:
           path: generated-mobile-native-hosts
           if-no-files-found: error
           retention-days: 1
+
+  commit-native-hosts:
+    name: Commit validated native hosts
+    needs: native-host-prototype
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/initial-platform'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact tested PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Download validated native hosts
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-mobile-native-hosts
+          path: generated-mobile-native-hosts
+
+      - name: Commit native host projects
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          rm -rf apps/mobile/ios apps/mobile/android
+          cp -R generated-mobile-native-hosts/ios apps/mobile/ios
+          cp -R generated-mobile-native-hosts/android apps/mobile/android
+          chmod +x apps/mobile/android/gradlew
+
+          if [ -z "$(git status --porcelain -- apps/mobile/ios apps/mobile/android)" ]; then
+            echo "Native host projects are already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/ios apps/mobile/android
+          git commit -m "Add React Native iOS and Android hosts"
+          git push origin "HEAD:${HEAD_BRANCH}"
