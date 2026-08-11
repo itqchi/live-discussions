@@ -9,6 +9,7 @@ import type {
   JoinRoomResponse,
   RaiseHandRequest,
   RemoveParticipantRequest,
+  RoomBannedUser,
   RoomCommentHistoryItem,
   RoomParticipant,
   RoomSummary,
@@ -51,6 +52,34 @@ export class RoomApiService {
         request,
       ),
       'Unable to update room settings.',
+    );
+  }
+
+  listBannedUsers(roomId: string): Promise<RoomBannedUser[]> {
+    return apiRequestToPromise(
+      this.http.get<RoomBannedUser[]>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/bans`,
+      ),
+      'Unable to load banned participants.',
+    );
+  }
+
+  banParticipant(roomId: string, participantId: string): Promise<void> {
+    return apiRequestToPromise(
+      this.http.patch<void>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/bans/${encodeURIComponent(participantId)}`,
+        {},
+      ),
+      'Unable to ban this participant.',
+    );
+  }
+
+  unbanParticipant(roomId: string, participantId: string): Promise<void> {
+    return apiRequestToPromise(
+      this.http.delete<void>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/bans/${encodeURIComponent(participantId)}`,
+      ),
+      'Unable to unban this participant.',
     );
   }
 
