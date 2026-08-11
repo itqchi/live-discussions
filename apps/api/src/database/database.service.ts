@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 
-type DatabaseDriver = 'memory' | 'postgres';
+export type DatabaseDriver = 'memory' | 'postgres';
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
@@ -34,6 +34,15 @@ export class DatabaseService implements OnModuleDestroy {
 
   get configured(): boolean {
     return this.driver === 'postgres';
+  }
+
+  get mode(): DatabaseDriver {
+    return this.driver;
+  }
+
+  async ping(): Promise<void> {
+    if (!this.pool) return;
+    await this.pool.query('SELECT 1');
   }
 
   async query<T extends QueryResultRow = QueryResultRow>(
