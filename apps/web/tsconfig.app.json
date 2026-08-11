@@ -4,6 +4,11 @@
     "outDir": "../../dist/out-tsc",
     "types": []
   },
+  "angularCompilerOptions": {
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  },
   "files": ["src/main.ts"],
   "include": ["src/**/*.d.ts"]
 }
