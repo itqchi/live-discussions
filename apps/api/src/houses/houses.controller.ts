@@ -22,6 +22,7 @@ import { DevUser } from '../auth/dev-user.decorator';
 import { CreateHouseDto } from './dto/create-house.dto';
 import { CreateHouseRoomDto } from './dto/create-house-room.dto';
 import { JoinHouseDto } from './dto/join-house.dto';
+import { UpdateHouseDto } from './dto/update-house.dto';
 import { UpdateHouseMemberRoleDto } from './dto/update-house-member-role.dto';
 import { HousesService } from './houses.service';
 
@@ -48,6 +49,15 @@ export class HousesController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<CreateHouseResponse> {
     return this.housesService.createHouse(request, user);
+  }
+
+  @Patch(':houseId')
+  update(
+    @Param('houseId') houseId: string,
+    @Body() request: UpdateHouseDto,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<HouseSummary> {
+    return this.housesService.updateHouse(houseId, request, user);
   }
 
   @Post('join')
