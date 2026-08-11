@@ -167,17 +167,20 @@ export class RoomMembershipService {
         [user.userId, user.displayName],
       );
 
-      const existing = await client.query<{ role: ParticipantRole }>(
+      await client.query(
+        `INSERT INTO room_member (room_id, user_id, role)
+         VALUES ($1, $2, 'listener')
+         ON CONFLICT (room_id, user_id) DO NOTHING`,
+        [roomId, user.userId],
+      );
+
+      const result = await client.query<{ role: ParticipantRole }>(
         'SELECT role FROM room_member WHERE room_id = $1 AND user_id = $2',
         [roomId, user.userId],
       );
-      if (existing.rows[0]) return existing.rows[0].role;
-
-      await client.query(
-        'INSERT INTO room_member (room_id, user_id, role) VALUES ($1, $2, $3)',
-        [roomId, user.userId, 'listener'],
-      );
-      return 'listener';
+      const membership = result.rows[0];
+      if (!membership) throw new NotFoundException('Room membership could not be resolved.');
+      return membership.role;
     });
   }
 
