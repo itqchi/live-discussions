@@ -165,17 +165,20 @@ export class HousesService {
         [user.userId, user.displayName],
       );
 
-      const existing = await client.query<{ role: HouseMemberRole }>(
+      await client.query(
+        `INSERT INTO house_member (house_id, user_id, role)
+         VALUES ($1, $2, 'member')
+         ON CONFLICT (house_id, user_id) DO NOTHING`,
+        [request.houseId, user.userId],
+      );
+
+      const membership = await client.query<{ role: HouseMemberRole }>(
         'SELECT role FROM house_member WHERE house_id = $1 AND user_id = $2',
         [request.houseId, user.userId],
       );
-      if (existing.rows[0]) return existing.rows[0].role;
-
-      await client.query(
-        'INSERT INTO house_member (house_id, user_id, role) VALUES ($1, $2, $3)',
-        [request.houseId, user.userId, 'member'],
-      );
-      return 'member';
+      const resolved = membership.rows[0];
+      if (!resolved) throw new NotFoundException('House membership could not be resolved.');
+      return resolved.role;
     });
 
     return { house: await this.getHouseSummary(request.houseId), role };
@@ -242,8 +245,8 @@ export class HousesService {
 
     const house = await this.getHouseSummary(houseId);
     const rooms = await this.existingRooms(house.roomIds);
-    const normalizedName = request.title.trim().toLocaleLowerCase();
-    if (rooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedName)) {
+    const normalizedName = request.title.trim().toLowerCase();
+    if (rooms.some((room) => room.title.trim().toLowerCase() === normalizedName)) {
       throw new ConflictException('A room with this name already exists in this House.');
     }
 
