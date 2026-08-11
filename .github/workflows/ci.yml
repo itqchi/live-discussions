@@ -27,3 +27,11 @@ jobs:
 
       - name: Verify workspace
         run: npm run check
+
+      - name: Verify migration runner
+        run: npm run migrate:api
+
+      - name: Verify hosted runtime config
+        env:
+          API_BASE_URL: https://api.example.invalid
+        run: node scripts/write-web-runtime-config.mjs
