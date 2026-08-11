@@ -3,12 +3,12 @@ import {
   Component,
   HostListener,
   OnInit,
-  computed,
   inject,
   signal,
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ROOM_REACTION_EMOJIS } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
 import { DismissibleDetailsDirective } from '../../../../shared/ui/dismissible-details.directive';
 import { RoomFacade } from '../../data-access/room.facade';
@@ -32,10 +32,9 @@ export class RoomPageComponent implements OnInit {
   readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
   readonly roomPath = `/room/${this.roomId}`;
   readonly displayName = this.identity.displayName;
-  readonly initials = computed(() => this.initialsFor(this.displayName()));
   readonly settingsOpen = signal(false);
   readonly replyingToId = signal<string | null>(null);
-  readonly availableReactions = ['👍', '❤️', '😂', '👏', '🔥'];
+  readonly availableReactions = ROOM_REACTION_EMOJIS;
 
   readonly commentForm = this.formBuilder.nonNullable.group({
     comment: ['', [Validators.required, Validators.maxLength(1000)]],
