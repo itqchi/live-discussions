@@ -4,6 +4,7 @@ import {
   isRoomReactionEmoji,
   type JoinRoomResponse,
   type ParticipantRole,
+  type RoomCommentHistoryItem,
   type RoomReactionEmoji,
 } from '@live-discussions/contracts';
 import {
@@ -241,6 +242,30 @@ export class RoomMediaService {
     }
   }
 
+  hydrateComments(history: RoomCommentHistoryItem[]): void {
+    const commentsById = new Map(this.comments().map((comment) => [comment.id, comment]));
+    const localIdentity = this.room.localParticipant.identity;
+
+    for (const comment of history) {
+      commentsById.set(comment.id, {
+        id: comment.id,
+        participantIdentity: comment.participantIdentity,
+        participantName: comment.participantName,
+        text: comment.text,
+        timestamp: comment.timestamp,
+        isLocal: comment.participantIdentity === localIdentity,
+        replyToId: comment.replyToId,
+        reactions: this.normalizeHistoryReactions(comment.reactions),
+      });
+    }
+
+    const merged = [...commentsById.values()]
+      .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
+      .slice(-MAX_CACHED_COMMENTS);
+    this.comments.set(merged);
+    this.persistComments(merged);
+  }
+
   setFeaturedParticipant(participantId: string | null): void {
     this.featuredParticipantId.set(participantId);
   }
@@ -274,9 +299,11 @@ export class RoomMediaService {
     this.syncLocalMediaState();
   }
 
-  async sendComment(text: string, replyToId: string | null = null): Promise<void> {
+  async sendComment(text: string, replyToId: string | null = null): Promise<RoomComment> {
     const normalizedText = text.trim();
-    if (!normalizedText || !this.connected()) return;
+    if (!normalizedText || !this.connected()) {
+      throw new Error('You must be connected to send a comment.');
+    }
     if (normalizedText.length > MAX_COMMENT_LENGTH) {
       throw new Error(`Comments can be up to ${MAX_COMMENT_LENGTH} characters.`);
     }
@@ -289,7 +316,7 @@ export class RoomMediaService {
       attributes: replyToId ? { replyToId } : undefined,
     });
 
-    this.appendComment({
+    const comment: RoomComment = {
       id: info.id,
       participantIdentity: this.room.localParticipant.identity,
       participantName: this.room.localParticipant.name || this.room.localParticipant.identity,
@@ -298,20 +325,26 @@ export class RoomMediaService {
       isLocal: true,
       replyToId,
       reactions: {},
-    });
+    };
+    this.appendComment(comment);
+    return comment;
   }
 
-  async toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<void> {
+  async toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<boolean> {
     const comment = this.comments().find((item) => item.id === commentId);
-    if (!comment || !this.connected() || !isRoomReactionEmoji(emoji)) return;
+    if (!comment || !this.connected() || !isRoomReactionEmoji(emoji)) {
+      throw new Error('This comment cannot be reacted to right now.');
+    }
 
     const identity = this.room.localParticipant.identity;
-    const action = comment.reactions[emoji]?.includes(identity) ? 'remove' : 'add';
+    const active = !comment.reactions[emoji]?.includes(identity);
+    const action = active ? 'add' : 'remove';
     await this.room.localParticipant.sendText(emoji, {
       topic: COMMENT_REACTIONS_TOPIC,
       attributes: { commentId, action },
     });
     this.applyCommentReaction(commentId, emoji, identity, action);
+    return active;
   }
 
   async sendStageReaction(emoji: RoomReactionEmoji): Promise<void> {
@@ -480,6 +513,19 @@ export class RoomMediaService {
       replyToId,
       reactions,
     };
+  }
+
+  private normalizeHistoryReactions(
+    reactions: RoomCommentHistoryItem['reactions'],
+  ): Record<string, string[]> {
+    const normalized: Record<string, string[]> = {};
+    for (const [emoji, identities] of Object.entries(reactions)) {
+      if (!isRoomReactionEmoji(emoji) || !Array.isArray(identities)) continue;
+      normalized[emoji] = identities.filter(
+        (identity): identity is string => typeof identity === 'string',
+      );
+    }
+    return normalized;
   }
 
   private persistComments(comments: RoomComment[]): void {
