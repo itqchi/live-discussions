@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   AuthenticatedUser,
   ParticipantRole,
@@ -210,14 +215,17 @@ export class RoomMembershipService {
 
   async resolveMembership(identifier: string, user: AuthenticatedUser): Promise<RoomMembershipState> {
     const roomId = await this.resolveRoomId(identifier);
+    const existing = await this.getMembership(roomId, user.userId);
+    if (existing) return existing;
+
+    const room = await this.getRoomSummary(roomId);
+    if (room.isLocked) {
+      throw new ForbiddenException('This room is locked to new participants.');
+    }
 
     if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      const existing = room.members.get(user.userId);
-      if (existing) return { ...existing };
-
       const membership: RoomMembershipState = { role: 'listener', onStage: false };
-      room.members.set(user.userId, membership);
+      this.getMemoryRoom(roomId).members.set(user.userId, membership);
       return { ...membership };
     }
 
