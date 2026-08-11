@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HomeFacade } from '../../data-access/home.facade';
+
+type RoomAccessFilter = 'all' | 'open' | 'locked';
 
 @Component({
   selector: 'live-discussions-home-page',
@@ -12,6 +21,23 @@ import { HomeFacade } from '../../data-access/home.facade';
 export class HomePageComponent implements OnInit {
   readonly facade = inject(HomeFacade);
   private readonly formBuilder = inject(FormBuilder);
+
+  readonly roomSearch = signal('');
+  readonly roomAccessFilter = signal<RoomAccessFilter>('all');
+  readonly filteredRooms = computed(() => {
+    const query = this.roomSearch().trim().toLocaleLowerCase();
+    const access = this.roomAccessFilter();
+
+    return this.facade.rooms().filter((room) => {
+      if (access === 'open' && room.isLocked) return false;
+      if (access === 'locked' && !room.isLocked) return false;
+      if (!query) return true;
+
+      const houseName = this.facade.houseForRoom(room.id)?.name ?? '';
+      return [room.title, room.description, houseName]
+        .some((value) => value.toLocaleLowerCase().includes(query));
+    });
+  });
 
   readonly identityForm = this.formBuilder.nonNullable.group({
     displayName: [this.facade.displayName(), [Validators.required, Validators.maxLength(80)]],
@@ -28,6 +54,14 @@ export class HomePageComponent implements OnInit {
 
   ngOnInit(): void {
     void this.facade.load();
+  }
+
+  setRoomSearch(value: string): void {
+    this.roomSearch.set(value);
+  }
+
+  setRoomAccessFilter(filter: RoomAccessFilter): void {
+    this.roomAccessFilter.set(filter);
   }
 
   saveDisplayName(): void {
