@@ -59,6 +59,60 @@ await expectJson(
   },
 );
 
+await expectJson(
+  'POST',
+  '/rooms/join',
+  { roomId: standalone.room.slug },
+  memberHeaders,
+  201,
+  (body) => {
+    assert(body.participant?.role === 'listener', 'New room member must join as listener.');
+  },
+);
+
+const commentsPath = `/rooms/${encodeURIComponent(standalone.room.slug)}/comments`;
+const firstComment = await expectJson(
+  'POST',
+  commentsPath,
+  { id: 'ci-comment-1', text: 'First shared comment', replyToId: null },
+  ownerHeaders,
+  201,
+  (body) => {
+    assert(body.id === 'ci-comment-1', 'Persisted comment id changed unexpectedly.');
+    assert(body.participantIdentity === 'ci-owner', 'Persisted comment author is incorrect.');
+    assert(body.text === 'First shared comment', 'Persisted comment text is incorrect.');
+    assert(body.replyToId === null, 'Root comment must not have a reply target.');
+  },
+);
+
+const replyComment = await expectJson(
+  'POST',
+  commentsPath,
+  { id: 'ci-comment-2', text: 'Shared reply', replyToId: firstComment.id },
+  memberHeaders,
+  201,
+  (body) => {
+    assert(body.participantIdentity === 'ci-member', 'Reply author is incorrect.');
+    assert(body.replyToId === firstComment.id, 'Reply relationship was not persisted.');
+  },
+);
+
+await expectStatus(
+  'PATCH',
+  `${commentsPath}/${encodeURIComponent(firstComment.id)}/reaction`,
+  { emoji: '👍', active: true },
+  memberHeaders,
+  204,
+);
+
+await expectJson('GET', commentsPath, undefined, ownerHeaders, 200, (body) => {
+  assert(Array.isArray(body) && body.length === 2, 'Shared comment history did not return both comments.');
+  const restoredRoot = body.find((comment) => comment.id === firstComment.id);
+  const restoredReply = body.find((comment) => comment.id === replyComment.id);
+  assert(restoredRoot?.reactions?.['👍']?.includes('ci-member'), 'Shared reaction was not restored.');
+  assert(restoredReply?.replyToId === firstComment.id, 'Shared reply relationship was not restored.');
+});
+
 const createdHouse = await expectJson(
   'POST',
   '/houses',
