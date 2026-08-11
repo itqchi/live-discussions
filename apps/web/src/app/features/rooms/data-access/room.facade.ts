@@ -5,6 +5,7 @@ import type {
   JoinRoomResponse,
   ModeratedParticipantRole,
   ParticipantRole,
+  RoomReactionEmoji,
 } from '@live-discussions/contracts';
 import { Track } from 'livekit-client';
 import { DevIdentityService } from '../../../core/dev-identity.service';
@@ -191,14 +192,14 @@ export class RoomFacade {
     }
   }
 
-  toggleCommentReaction(commentId: string, emoji: string): Promise<void> {
+  toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<void> {
     return this.runAction(
       () => this.media.toggleCommentReaction(commentId, emoji),
       'Unable to react to this comment.',
     );
   }
 
-  sendStageReaction(emoji: string): Promise<void> {
+  sendStageReaction(emoji: RoomReactionEmoji): Promise<void> {
     return this.runAction(
       () => this.media.sendStageReaction(emoji),
       'Unable to send reaction.',
@@ -209,7 +210,7 @@ export class RoomFacade {
     return commentId ? this.comments().find((comment) => comment.id === commentId) ?? null : null;
   }
 
-  stageReactionFor(participantId: string): string | null {
+  stageReactionFor(participantId: string): RoomReactionEmoji | null {
     return this.stageReactions()[participantId]?.emoji ?? null;
   }
 
