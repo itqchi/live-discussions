@@ -37,7 +37,7 @@ export class HousesController {
   @Get(':houseId')
   get(
     @Param('houseId') houseId: string,
-    @DevUser() user: AuthenticatedUser,
+    @DevUser({ optional: true }) user: AuthenticatedUser | null,
   ): Promise<GetHouseResponse> {
     return this.housesService.getHouse(houseId, user);
   }
