@@ -21,6 +21,7 @@ type VideoTrack = LocalVideoTrack | RemoteVideoTrack;
 })
 export class VideoTrackComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input({ required: true }) track!: VideoTrack;
+  @Input() mirrored = false;
 
   @ViewChild('video', { static: true })
   private readonly video!: ElementRef<HTMLVideoElement>;
