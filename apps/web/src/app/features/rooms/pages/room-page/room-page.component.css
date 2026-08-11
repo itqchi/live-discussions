@@ -1,8 +1,4 @@
-:host .size-32 {
+:host .featured-avatar {
   width: min(16rem, 70vw);
   height: min(16rem, 70vw);
-}
-
-:host .size-32 + p {
-  display: none;
 }
