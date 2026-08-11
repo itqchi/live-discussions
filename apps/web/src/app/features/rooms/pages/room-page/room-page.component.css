@@ -2,3 +2,23 @@
   width: min(16rem, 70vw);
   height: min(16rem, 70vw);
 }
+
+:host .speaker-surface,
+:host .speaker-avatar {
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+:host .speaker-surface.is-speaking {
+  border-color: rgb(52 211 153);
+  box-shadow: 0 0 0 2px rgb(52 211 153 / 0.72), 0 0 24px rgb(52 211 153 / 0.42);
+}
+
+:host .speaker-avatar {
+  border: 2px solid transparent;
+}
+
+:host .speaker-avatar.is-speaking {
+  border-color: rgb(52 211 153);
+  box-shadow: 0 0 0 4px rgb(52 211 153 / 0.3), 0 0 24px rgb(52 211 153 / 0.55);
+  transform: scale(1.03);
+}
