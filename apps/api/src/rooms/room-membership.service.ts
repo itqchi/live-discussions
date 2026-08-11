@@ -291,7 +291,7 @@ export class RoomMembershipService {
       if (current?.role === 'owner') return;
       room.members.set(userId, {
         role,
-        onStage: current?.role === role ? current.onStage : defaultOnStage,
+        onStage: role === 'listener' ? false : current?.onStage ?? defaultOnStage,
       });
       return;
     }
@@ -313,8 +313,8 @@ export class RoomMembershipService {
              END,
              on_stage = CASE
                WHEN room_member.role = 'owner' THEN room_member.on_stage
-               WHEN room_member.role = EXCLUDED.role THEN room_member.on_stage
-               ELSE EXCLUDED.on_stage
+               WHEN EXCLUDED.role = 'listener' THEN FALSE
+               ELSE room_member.on_stage
              END`,
         [roomId, userId, role, defaultOnStage],
       );
