@@ -24,13 +24,46 @@ export class HousePageComponent implements OnInit {
     title: ['', [Validators.required, Validators.maxLength(120)]],
   });
 
+  readonly houseForm = this.formBuilder.nonNullable.group({
+    name: ['', [Validators.required, Validators.maxLength(80)]],
+    description: ['', [Validators.maxLength(240)]],
+  });
+
   ngOnInit(): void {
     const houseId = this.route.snapshot.paramMap.get('houseId');
-    if (houseId) void this.facade.load(houseId);
+    if (!houseId) return;
+
+    void this.facade.load(houseId).then(() => {
+      const house = this.facade.house();
+      if (!house) return;
+      this.houseForm.setValue({
+        name: house.name,
+        description: house.description,
+      });
+    });
   }
 
   saveDisplayName(): void {
     this.facade.setDisplayName(this.identityForm.controls.displayName.value.trim());
+  }
+
+  saveHouseSettings(): void {
+    if (this.houseForm.invalid) {
+      this.houseForm.markAllAsTouched();
+      return;
+    }
+
+    const { name, description } = this.houseForm.getRawValue();
+    void this.facade.updateHouse(name, description).then((updated) => {
+      if (!updated) return;
+      const house = this.facade.house();
+      if (!house) return;
+      this.houseForm.setValue({
+        name: house.name,
+        description: house.description,
+      });
+      this.houseForm.markAsPristine();
+    });
   }
 
   joinHouse(): void {
