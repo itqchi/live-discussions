@@ -66,6 +66,7 @@ export interface JoinRoomResponse {
   participant: RoomParticipant;
   roomId: string;
   roomSlug: string;
+  roomTitle: string;
 }
 
 export interface CloseRoomRequest {
