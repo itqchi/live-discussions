@@ -26,7 +26,9 @@ import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
 import { SetRoomCommentReactionDto } from './dto/set-room-comment-reaction.dto';
 import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
+import { UpdateRoomSettingsDto } from './dto/update-room-settings.dto';
 import { RoomCommentsService } from './room-comments.service';
+import { RoomSettingsService } from './room-settings.service';
 import { RoomsService } from './rooms.service';
 
 @Controller('rooms')
@@ -34,6 +36,7 @@ export class RoomsController {
   constructor(
     private readonly roomsService: RoomsService,
     private readonly roomComments: RoomCommentsService,
+    private readonly roomSettings: RoomSettingsService,
   ) {}
 
   @Get()
@@ -55,6 +58,20 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<JoinRoomResponse> {
     return this.roomsService.createJoinToken(request, user);
+  }
+
+  @Get(':roomId')
+  getRoom(@Param('roomId') roomId: string): Promise<RoomSummary> {
+    return this.roomSettings.getRoom(roomId);
+  }
+
+  @Patch(':roomId')
+  updateRoom(
+    @Param('roomId') roomId: string,
+    @Body() request: UpdateRoomSettingsDto,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<RoomSummary> {
+    return this.roomSettings.updateRoom(roomId, request, user);
   }
 
   @Get(':roomId/comments')
