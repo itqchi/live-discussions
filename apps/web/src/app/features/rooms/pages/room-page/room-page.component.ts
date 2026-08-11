@@ -2,11 +2,13 @@ import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   HostListener,
   OnInit,
   inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
@@ -33,11 +35,12 @@ type RoomLinkActionStatus = 'idle' | 'copied' | 'shared' | 'error';
 export class RoomPageComponent implements OnInit {
   readonly facade = inject(RoomFacade);
   private readonly document = inject(DOCUMENT);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
   private readonly identity = inject(DevIdentityService);
   private readonly formBuilder = inject(FormBuilder);
 
-  readonly roomId = this.route.snapshot.paramMap.get('roomId') ?? '';
+  readonly roomId = signal(this.route.snapshot.paramMap.get('roomId') ?? '');
   readonly displayName = this.identity.displayName;
   readonly settingsOpen = signal(false);
   readonly replyingToId = signal<string | null>(null);
@@ -53,7 +56,19 @@ export class RoomPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    if (this.roomId && this.displayName()) this.join();
+    this.route.paramMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const nextRoomId = params.get('roomId') ?? '';
+        if (nextRoomId === this.roomId()) return;
+
+        this.roomId.set(nextRoomId);
+        this.closeTransientUi();
+        this.commentForm.reset();
+        void this.facade.switchRoom(nextRoomId, this.displayName());
+      });
+
+    if (this.roomId() && this.displayName()) this.join();
   }
 
   @HostListener('document:keydown.escape')
@@ -70,12 +85,13 @@ export class RoomPageComponent implements OnInit {
 
   join(): void {
     const requestedDisplayName = (this.displayName() || this.joinForm.controls.displayName.value).trim();
-    if (!this.roomId || !requestedDisplayName || this.facade.connected() || this.facade.joining()) {
+    const roomId = this.roomId();
+    if (!roomId || !requestedDisplayName || this.facade.connected() || this.facade.joining()) {
       if (!requestedDisplayName) this.joinForm.markAllAsTouched();
       return;
     }
 
-    void this.facade.join(this.roomId, requestedDisplayName);
+    void this.facade.join(roomId, requestedDisplayName);
   }
 
   sendComment(): void {
@@ -114,7 +130,7 @@ export class RoomPageComponent implements OnInit {
       return;
     }
 
-    const slug = this.facade.roomSlug() || this.roomId;
+    const slug = this.facade.roomSlug() || this.roomId();
     const url = new URL(`/room/${encodeURIComponent(slug)}`, window.location.origin).toString();
     const title = this.facade.roomTitle() || slug;
 
