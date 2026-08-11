@@ -29,6 +29,11 @@ export interface RoomParticipant {
   onStage: boolean;
 }
 
+export interface RoomBannedUser {
+  userId: string;
+  displayName: string;
+}
+
 export interface DiscussionRoom {
   id: string;
   slug: string;
@@ -135,3 +140,5 @@ export interface RemoveParticipantRequest {
   roomId: string;
   participantId: string;
 }
+
+export interface BanParticipantRequest extends RemoveParticipantRequest {}
