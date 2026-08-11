@@ -159,6 +159,38 @@ await expectJson(
   },
 );
 
+await expectJson(
+  'PATCH',
+  `/houses/${encodeURIComponent(createdHouse.house.id)}`,
+  { name: 'CI House Updated', description: 'Updated House profile.' },
+  ownerHeaders,
+  200,
+  (body) => {
+    assert(body.name === 'CI House Updated', 'House owner update did not persist the name.');
+    assert(body.description === 'Updated House profile.', 'House owner update did not persist the description.');
+  },
+);
+
+await expectStatus(
+  'PATCH',
+  `/houses/${encodeURIComponent(createdHouse.house.id)}`,
+  { name: 'Member Rename Attempt', description: 'Must not be accepted.' },
+  memberHeaders,
+  403,
+);
+
+await expectJson(
+  'GET',
+  `/houses/${encodeURIComponent(createdHouse.house.id)}`,
+  undefined,
+  ownerHeaders,
+  200,
+  (body) => {
+    assert(body.house?.name === 'CI House Updated', 'House profile update was not visible on a fresh read.');
+    assert(body.house?.description === 'Updated House profile.', 'House description update was not visible on a fresh read.');
+  },
+);
+
 const firstHouseRoom = await expectJson(
   'POST',
   `/houses/${encodeURIComponent(createdHouse.house.id)}/rooms`,
