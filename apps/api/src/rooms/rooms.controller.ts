@@ -65,7 +65,7 @@ export class RoomsController {
     return this.roomSettings.getRoom(roomId);
   }
 
-  @Patch(':roomId')
+  @Patch(':roomId/settings')
   updateRoom(
     @Param('roomId') roomId: string,
     @Body() request: UpdateRoomSettingsDto,
