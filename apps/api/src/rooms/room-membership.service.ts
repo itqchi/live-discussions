@@ -19,6 +19,9 @@ interface DatabaseErrorLike {
   code?: string;
 }
 
+const MAX_ROOM_SLUG_LENGTH = 80;
+const MAX_SLUG_ATTEMPTS = 10_000;
+
 @Injectable()
 export class RoomMembershipService {
   private readonly roomsById = new Map<string, MemoryRoom>();
@@ -88,14 +91,10 @@ export class RoomMembershipService {
     };
   }
 
-  async createRoom(slug: string, title: string, owner: AuthenticatedUser): Promise<RoomSummary> {
-    const id = randomUUID();
-
+  async createRoom(baseSlug: string, title: string, owner: AuthenticatedUser): Promise<RoomSummary> {
     if (!this.database.configured) {
-      if (this.roomIdBySlug.has(slug)) {
-        throw new ConflictException('A room with this name already exists.');
-      }
-
+      const slug = this.allocateMemorySlug(baseSlug);
+      const id = randomUUID();
       const room: MemoryRoom = {
         id,
         slug,
@@ -107,34 +106,38 @@ export class RoomMembershipService {
       return this.toMemorySummary(room);
     }
 
-    try {
-      await this.database.transaction(async (client) => {
-        await client.query(
-          `INSERT INTO app_user (id, display_name)
-           VALUES ($1, $2)
-           ON CONFLICT (id) DO UPDATE
-           SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-          [owner.userId, owner.displayName],
-        );
+    for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
+      const slug = this.slugCandidate(baseSlug, attempt);
+      const id = randomUUID();
 
-        await client.query(
-          'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
-          [id, slug, title],
-        );
-        await client.query(
-          `INSERT INTO room_member (room_id, user_id, role, on_stage)
-           VALUES ($1, $2, 'owner', TRUE)`,
-          [id, owner.userId],
-        );
-      });
-    } catch (error) {
-      if (this.isUniqueViolation(error)) {
-        throw new ConflictException('A room with this name already exists.');
+      try {
+        await this.database.transaction(async (client) => {
+          await client.query(
+            `INSERT INTO app_user (id, display_name)
+             VALUES ($1, $2)
+             ON CONFLICT (id) DO UPDATE
+             SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+            [owner.userId, owner.displayName],
+          );
+
+          await client.query(
+            'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
+            [id, slug, title],
+          );
+          await client.query(
+            `INSERT INTO room_member (room_id, user_id, role, on_stage)
+             VALUES ($1, $2, 'owner', TRUE)`,
+            [id, owner.userId],
+          );
+        });
+        return { id, slug, title, isLive: true, memberCount: 1 };
+      } catch (error) {
+        if (this.isUniqueViolation(error)) continue;
+        throw error;
       }
-      throw error;
     }
 
-    return { id, slug, title, isLive: true, memberCount: 1 };
+    throw new ConflictException('Unable to allocate a unique public room URL.');
   }
 
   async resolveRoomId(identifier: string): Promise<string> {
@@ -319,6 +322,21 @@ export class RoomMembershipService {
         [roomId, userId, role, defaultOnStage],
       );
     });
+  }
+
+  private allocateMemorySlug(baseSlug: string): string {
+    for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
+      const candidate = this.slugCandidate(baseSlug, attempt);
+      if (!this.roomIdBySlug.has(candidate)) return candidate;
+    }
+    throw new ConflictException('Unable to allocate a unique public room URL.');
+  }
+
+  private slugCandidate(baseSlug: string, attempt: number): string {
+    if (attempt <= 1) return baseSlug.slice(0, MAX_ROOM_SLUG_LENGTH);
+    const suffix = `-${attempt}`;
+    const prefixLength = Math.max(1, MAX_ROOM_SLUG_LENGTH - suffix.length);
+    return `${baseSlug.slice(0, prefixLength)}${suffix}`;
   }
 
   private isUniqueViolation(error: unknown): boolean {
