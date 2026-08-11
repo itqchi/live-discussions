@@ -71,7 +71,7 @@ export class HousesService {
     return result.rows.map((row) => this.summaryFromRow(row));
   }
 
-  async getHouse(houseId: string, user: AuthenticatedUser): Promise<GetHouseResponse> {
+  async getHouse(houseId: string, user: AuthenticatedUser | null): Promise<GetHouseResponse> {
     const house = await this.getHouseSummary(houseId);
     const rooms = await this.existingRooms(house.roomIds);
 
@@ -80,7 +80,7 @@ export class HousesService {
     }
 
     const [role, members] = await Promise.all([
-      this.getMemberRole(houseId, user.userId),
+      user ? this.getMemberRole(houseId, user.userId) : Promise.resolve(null),
       this.getMembers(houseId),
     ]);
 
