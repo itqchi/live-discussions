@@ -108,7 +108,7 @@ export default function App(): React.JSX.Element {
           serverUrl={session.livekitUrl}
           token={session.token}
           connect
-          audio={session.participant.permissions.canPublishAudio}
+          audio={false}
           video={false}
           options={{ adaptiveStream: true, dynacast: true }}
         >
