@@ -32,6 +32,11 @@ export interface CreateHouseResponse {
   role: HouseMemberRole;
 }
 
+export interface UpdateHouseRequest {
+  name: string;
+  description: string;
+}
+
 export interface JoinHouseRequest {
   houseId: string;
 }
