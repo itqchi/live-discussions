@@ -64,3 +64,35 @@ jobs:
         env:
           API_BASE_URL: https://api.example.invalid
         run: node scripts/write-web-runtime-config.mjs
+
+      - name: Prototype version-matched React Native native hosts
+        env:
+          NX_DAEMON: "false"
+        run: |
+          mv apps/mobile /tmp/live-discussions-mobile-source
+          npx nx generate @nx/react-native:application apps/mobile \
+            --displayName="Live Discussions" \
+            --unitTestRunner=none \
+            --e2eTestRunner=none \
+            --linter=none \
+            --skipPackageJson \
+            --install=false \
+            --useProjectJson=true \
+            --skipFormat \
+            --no-interactive
+
+          test -d apps/mobile/ios
+          test -d apps/mobile/android
+          mkdir generated-mobile-native-hosts
+          cp -R apps/mobile/ios generated-mobile-native-hosts/ios
+          cp -R apps/mobile/android generated-mobile-native-hosts/android
+          rm -rf apps/mobile
+          mv /tmp/live-discussions-mobile-source apps/mobile
+
+      - name: Export native host prototype
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-mobile-native-hosts
+          path: generated-mobile-native-hosts
+          if-no-files-found: error
+          retention-days: 1
