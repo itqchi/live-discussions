@@ -1,5 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AuthenticatedUser, ParticipantRole, RoomSummary } from '@live-discussions/contracts';
+import type {
+  AuthenticatedUser,
+  ParticipantRole,
+  RoomSummary,
+  UpdateRoomSettingsRequest,
+} from '@live-discussions/contracts';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 
@@ -12,6 +17,8 @@ interface MemoryRoom {
   id: string;
   slug: string;
   title: string;
+  description: string;
+  isLocked: boolean;
   members: Map<string, RoomMembershipState>;
 }
 
@@ -40,12 +47,15 @@ export class RoomMembershipService {
       id: string;
       slug: string;
       title: string;
+      description: string;
+      is_locked: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.slug, room.title, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
+              COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
-       GROUP BY room.id, room.slug, room.title
+       GROUP BY room.id, room.slug, room.title, room.description, room.is_locked
        ORDER BY room.title ASC`,
     );
 
@@ -53,7 +63,9 @@ export class RoomMembershipService {
       id: room.id,
       slug: room.slug,
       title: room.title,
+      description: room.description,
       isLive: true,
+      isLocked: room.is_locked,
       memberCount: Number(room.member_count),
     }));
   }
@@ -69,13 +81,16 @@ export class RoomMembershipService {
       id: string;
       slug: string;
       title: string;
+      description: string;
+      is_locked: boolean;
       member_count: string;
     }>(
-      `SELECT room.id, room.slug, room.title, COUNT(member.user_id)::text AS member_count
+      `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
+              COUNT(member.user_id)::text AS member_count
        FROM discussion_room room
        LEFT JOIN room_member member ON member.room_id = room.id
        WHERE room.id = $1
-       GROUP BY room.id, room.slug, room.title`,
+       GROUP BY room.id, room.slug, room.title, room.description, room.is_locked`,
       [roomId],
     );
 
@@ -86,7 +101,9 @@ export class RoomMembershipService {
       id: room.id,
       slug: room.slug,
       title: room.title,
+      description: room.description,
       isLive: true,
+      isLocked: room.is_locked,
       memberCount: Number(room.member_count),
     };
   }
@@ -99,6 +116,8 @@ export class RoomMembershipService {
         id,
         slug,
         title,
+        description: '',
+        isLocked: false,
         members: new Map([[owner.userId, { role: 'owner', onStage: true }]]),
       };
       this.roomsById.set(id, room);
@@ -121,7 +140,8 @@ export class RoomMembershipService {
           );
 
           await client.query(
-            'INSERT INTO discussion_room (id, slug, title, is_live) VALUES ($1, $2, $3, TRUE)',
+            `INSERT INTO discussion_room (id, slug, title, is_live, description, is_locked)
+             VALUES ($1, $2, $3, TRUE, '', FALSE)`,
             [id, slug, title],
           );
           await client.query(
@@ -130,7 +150,15 @@ export class RoomMembershipService {
             [id, owner.userId],
           );
         });
-        return { id, slug, title, isLive: true, memberCount: 1 };
+        return {
+          id,
+          slug,
+          title,
+          description: '',
+          isLive: true,
+          isLocked: false,
+          memberCount: 1,
+        };
       } catch (error) {
         if (this.isUniqueViolation(error)) continue;
         throw error;
@@ -138,6 +166,30 @@ export class RoomMembershipService {
     }
 
     throw new ConflictException('Unable to allocate a unique public room URL.');
+  }
+
+  async updateRoomSettings(
+    identifier: string,
+    request: UpdateRoomSettingsRequest,
+  ): Promise<RoomSummary> {
+    const roomId = await this.resolveRoomId(identifier);
+
+    if (!this.database.configured) {
+      const room = this.getMemoryRoom(roomId);
+      room.title = request.title;
+      room.description = request.description;
+      room.isLocked = request.isLocked;
+      return this.toMemorySummary(room);
+    }
+
+    const result = await this.database.query(
+      `UPDATE discussion_room
+       SET title = $2, description = $3, is_locked = $4
+       WHERE id = $1`,
+      [roomId, request.title, request.description, request.isLocked],
+    );
+    if (result.rowCount === 0) throw new NotFoundException('Room not found.');
+    return this.getRoomSummary(roomId);
   }
 
   async resolveRoomId(identifier: string): Promise<string> {
@@ -356,7 +408,9 @@ export class RoomMembershipService {
       id: room.id,
       slug: room.slug,
       title: room.title,
+      description: room.description,
       isLive: true,
+      isLocked: room.isLocked,
       memberCount: room.members.size,
     };
   }
