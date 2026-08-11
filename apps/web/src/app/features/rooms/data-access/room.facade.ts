@@ -41,24 +41,38 @@ export class RoomFacade {
 
   private readonly roomId = signal<string | null>(null);
 
-  readonly localPresence = computed(() => this.participants().find((participant) => participant.isLocal) ?? null);
-  readonly currentRole = computed<ParticipantRole>(() => this.localPresence()?.role ?? this.participant()?.role ?? 'listener');
+  readonly localPresence = computed(() =>
+    this.participants().find((participant) => participant.isLocal) ?? null,
+  );
+  readonly currentRole = computed<ParticipantRole>(() =>
+    this.localPresence()?.role ?? this.participant()?.role ?? 'listener',
+  );
   readonly canPublishAudio = computed(() => this.currentRole() !== 'listener');
   readonly canPublishVideo = computed(() => this.currentRole() !== 'listener');
   readonly canShareScreen = computed(() => this.currentRole() !== 'listener');
-  readonly canModerate = computed(() => this.currentRole() === 'owner' || this.currentRole() === 'moderator');
+  readonly canModerate = computed(() =>
+    this.currentRole() === 'owner' || this.currentRole() === 'moderator',
+  );
   readonly canCloseRoom = this.canModerate;
   readonly raisedHand = computed(() => this.localPresence()?.raisedHand ?? false);
   readonly roleLabel = computed(() => this.currentRole());
   readonly isLocalOnStage = computed(() => this.localPresence()?.onStage ?? false);
 
-  readonly ownerParticipant = computed(() => this.participants().find((participant) => participant.role === 'owner') ?? null);
-  readonly stageParticipants = computed(() => this.participants().filter((participant) => participant.onStage));
-  readonly audienceParticipants = computed(() => this.participants().filter((participant) => !participant.onStage));
+  readonly ownerParticipant = computed(() =>
+    this.participants().find((participant) => participant.role === 'owner') ?? null,
+  );
+  readonly stageParticipants = computed(() =>
+    this.participants().filter((participant) => participant.onStage),
+  );
+  readonly audienceParticipants = computed(() =>
+    this.participants().filter((participant) => !participant.onStage),
+  );
 
   readonly effectiveFeaturedParticipantId = computed(() => {
     const explicit = this.featuredParticipantId();
-    if (explicit && this.participants().some((participant) => participant.identity === explicit)) return explicit;
+    if (explicit && this.participants().some((participant) => participant.identity === explicit)) {
+      return explicit;
+    }
 
     const owner = this.ownerParticipant();
     if (owner?.onStage) return owner.identity;
@@ -85,7 +99,9 @@ export class RoomFacade {
 
   constructor() {
     effect(() => {
-      if (this.media.roomDeleted()) void this.returnToOrigin();
+      if (this.media.roomDeleted() && !this.closingRoom()) {
+        void this.returnToOrigin();
+      }
     });
   }
 
@@ -93,6 +109,7 @@ export class RoomFacade {
     const normalizedRoomId = roomId.trim();
     const normalizedDisplayName = displayName.trim();
     if (!this.validateIdentity(normalizedRoomId, normalizedDisplayName)) return;
+    if (this.joining() || this.connected()) return;
 
     this.joining.set(true);
     this.error.set(null);
@@ -106,6 +123,12 @@ export class RoomFacade {
       await this.media.connect(session);
       this.participant.set(session.participant);
     } catch (error) {
+      this.participant.set(null);
+      try {
+        await this.media.disconnect();
+      } catch {
+        // disconnect() performs its local cleanup in a finally block.
+      }
       this.error.set(this.errorMessage(error, 'Unable to join the room.'));
     } finally {
       this.joining.set(false);
@@ -114,26 +137,41 @@ export class RoomFacade {
 
   async closeRoom(): Promise<boolean> {
     const roomId = this.roomId();
-    if (!roomId || !this.canCloseRoom()) return false;
+    if (!roomId || !this.canCloseRoom() || this.closingRoom()) return false;
 
     this.closingRoom.set(true);
     this.error.set(null);
+
     try {
       await this.api.closeRoom({ roomId });
-      await this.media.disconnect();
-      await this.returnToOrigin();
-      return true;
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to close the room.'));
+      this.closingRoom.set(false);
       return false;
+    }
+
+    try {
+      await this.media.disconnect();
+    } catch {
+      // The server already deleted the room and local media cleanup has run.
+    }
+
+    try {
+      await this.returnToOrigin();
+      return true;
     } finally {
       this.closingRoom.set(false);
     }
   }
 
   async leave(): Promise<void> {
-    await this.media.disconnect();
-    await this.returnToOrigin();
+    try {
+      await this.media.disconnect();
+    } catch {
+      // Local media cleanup is guaranteed by RoomMediaService.disconnect().
+    } finally {
+      await this.returnToOrigin();
+    }
   }
 
   async sendComment(text: string, replyToId: string | null = null): Promise<boolean> {
@@ -285,14 +323,22 @@ export class RoomFacade {
     if (!roomSlug) return;
 
     this.returningToOrigin = true;
-    const origin = this.navigation.consumeOrigin(roomSlug);
-    this.participant.set(null);
-    this.error.set(null);
+    const origin = this.navigation.originFor(roomSlug);
 
     try {
-      await this.router.navigateByUrl(origin);
-    } finally {
+      const navigated = await this.router.navigateByUrl(origin);
+      if (!navigated) {
+        this.error.set('Unable to leave this room. Please try again.');
+        return;
+      }
+
+      this.navigation.clearOrigin(roomSlug);
+      this.participant.set(null);
       this.roomId.set(null);
+      this.error.set(null);
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to leave this room. Please try again.'));
+    } finally {
       this.returningToOrigin = false;
     }
   }
