@@ -5,6 +5,7 @@ import {
   DestroyRef,
   HostListener,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -46,6 +47,12 @@ export class RoomPageComponent implements OnInit {
   readonly replyingToId = signal<string | null>(null);
   readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
   readonly availableReactions = ROOM_REACTION_EMOJIS;
+  readonly raisedHands = computed(() =>
+    this.facade.audienceParticipants().filter((participant) => participant.raisedHand),
+  );
+  readonly audienceWithoutRaisedHands = computed(() =>
+    this.facade.audienceParticipants().filter((participant) => !participant.raisedHand),
+  );
 
   readonly joinForm = this.formBuilder.nonNullable.group({
     displayName: [this.displayName(), [Validators.required, Validators.maxLength(80)]],
