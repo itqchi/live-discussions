@@ -121,9 +121,11 @@ export class RoomsService {
     await this.memberships.setMembershipState(roomId, user.userId, next);
 
     try {
-      await this.roomServiceClient().updateParticipant(roomId, user.userId, {
-        attributes: { onStage: request.onStage ? 'true' : 'false' },
-      });
+      await this.roomServiceClient().updateParticipant(
+        roomId,
+        user.userId,
+        this.stagePresenceUpdate(next),
+      );
     } catch (error) {
       await this.restoreParticipantState(roomId, user.userId, previous);
       throw error;
@@ -268,7 +270,7 @@ export class RoomsService {
         userId: info.identity,
         displayName: info.name || info.identity,
         role: next.role,
-        permissions: permissionsForRole(next.role),
+        permissions: this.effectivePermissions(next.role, next.onStage),
         raisedHand: false,
         onStage: next.onStage,
       };
@@ -311,18 +313,55 @@ export class RoomsService {
       canPublishData: boolean;
     };
   } {
-    const permissions = permissionsForRole(state.role);
     return {
       metadata: JSON.stringify({ role: state.role }),
       attributes: {
         raisedHand: 'false',
         onStage: state.onStage ? 'true' : 'false',
       },
-      permission: {
-        canSubscribe: true,
-        canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
-        canPublishData: true,
-      },
+      permission: this.liveKitPermission(state),
+    };
+  }
+
+  private stagePresenceUpdate(state: RoomMembershipState): {
+    attributes: Record<string, string>;
+    permission: {
+      canSubscribe: boolean;
+      canPublish: boolean;
+      canPublishData: boolean;
+    };
+  } {
+    return {
+      attributes: { onStage: state.onStage ? 'true' : 'false' },
+      permission: this.liveKitPermission(state),
+    };
+  }
+
+  private liveKitPermission(state: RoomMembershipState): {
+    canSubscribe: boolean;
+    canPublish: boolean;
+    canPublishData: boolean;
+  } {
+    const permissions = this.effectivePermissions(state.role, state.onStage);
+    return {
+      canSubscribe: true,
+      canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
+      canPublishData: true,
+    };
+  }
+
+  private effectivePermissions(
+    role: ParticipantRole,
+    onStage: boolean,
+  ): RoomParticipant['permissions'] {
+    const base = permissionsForRole(role);
+    if (onStage) return base;
+
+    return {
+      ...base,
+      canPublishAudio: false,
+      canPublishVideo: false,
+      canShareScreen: false,
     };
   }
 
@@ -376,7 +415,7 @@ export class RoomsService {
       userId: user.userId,
       displayName: user.displayName,
       role,
-      permissions: permissionsForRole(role),
+      permissions: this.effectivePermissions(role, onStage),
       raisedHand: false,
       onStage,
     };
