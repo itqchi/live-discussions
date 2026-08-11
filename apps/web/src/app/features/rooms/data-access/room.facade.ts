@@ -128,6 +128,13 @@ export class RoomFacade {
       this.participant.set(session.participant);
       this.roomTitle.set(session.roomTitle);
       this.roomSlug.set(session.roomSlug);
+
+      try {
+        const history = await this.api.listComments(session.roomId);
+        this.media.hydrateComments(history);
+      } catch {
+        this.error.set('Room connected, but shared comment history could not be loaded.');
+      }
     } catch (error) {
       this.participant.set(null);
       this.roomTitle.set(null);
@@ -184,12 +191,22 @@ export class RoomFacade {
 
   async sendComment(text: string, replyToId: string | null = null): Promise<boolean> {
     const normalizedText = text.trim();
-    if (!normalizedText || !this.connected()) return false;
+    const roomId = this.roomId();
+    if (!normalizedText || !roomId || !this.connected()) return false;
 
     this.sendingComment.set(true);
     this.error.set(null);
     try {
-      await this.media.sendComment(normalizedText, replyToId);
+      const comment = await this.media.sendComment(normalizedText, replyToId);
+      try {
+        await this.api.createComment(roomId, {
+          id: comment.id,
+          text: comment.text,
+          replyToId: comment.replyToId,
+        });
+      } catch {
+        this.error.set('Comment was sent live, but could not be saved to shared history.');
+      }
       return true;
     } catch (error) {
       this.error.set(this.errorMessage(error, 'Unable to send comment.'));
@@ -199,11 +216,21 @@ export class RoomFacade {
     }
   }
 
-  toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<void> {
-    return this.runAction(
-      () => this.media.toggleCommentReaction(commentId, emoji),
-      'Unable to react to this comment.',
-    );
+  async toggleCommentReaction(commentId: string, emoji: RoomReactionEmoji): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId) return;
+
+    this.error.set(null);
+    try {
+      const active = await this.media.toggleCommentReaction(commentId, emoji);
+      try {
+        await this.api.setCommentReaction(roomId, commentId, { emoji, active });
+      } catch {
+        this.error.set('Reaction was sent live, but could not be saved to shared history.');
+      }
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to react to this comment.'));
+    }
   }
 
   sendStageReaction(emoji: RoomReactionEmoji): Promise<void> {
@@ -365,7 +392,7 @@ export class RoomFacade {
 
   private validateIdentity(roomId: string, displayName: string): boolean {
     if (roomId && displayName) return true;
-    this.error.set('Choose your display name on Home before joining a room.');
+    this.error.set('Choose a display name before joining the room.');
     return false;
   }
 
