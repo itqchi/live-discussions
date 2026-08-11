@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm i
 
+      - name: Export generated npm lockfile
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 1
+
       - name: Verify workspace
         run: npm run check
 
