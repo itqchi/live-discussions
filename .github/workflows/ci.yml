@@ -64,22 +64,3 @@ jobs:
         env:
           API_BASE_URL: https://api.example.invalid
         run: node scripts/write-web-runtime-config.mjs
-
-      - name: Prototype React Native native hosts
-        env:
-          NX_DAEMON: "false"
-        run: |
-          npx nx generate @nx/react-native:upgrade-native apps/mobile --no-interactive
-          test -d apps/mobile/ios
-          test -d apps/mobile/android
-          git status --short
-
-      - name: Export native host prototype
-        uses: actions/upload-artifact@v7
-        with:
-          name: generated-mobile-native-hosts
-          path: |
-            apps/mobile/ios
-            apps/mobile/android
-          if-no-files-found: error
-          retention-days: 1
