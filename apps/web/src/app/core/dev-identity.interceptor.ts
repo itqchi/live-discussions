@@ -4,8 +4,10 @@ import { API_BASE_URL } from './api-base-url.token';
 import { DevIdentityService } from './dev-identity.service';
 
 export const devIdentityInterceptor: HttpInterceptorFn = (request, next) => {
-  const apiBaseUrl = inject(API_BASE_URL);
-  if (!request.url.startsWith(apiBaseUrl)) return next(request);
+  const apiBaseUrl = inject(API_BASE_URL).replace(/\/+$/, '');
+  if (request.url !== apiBaseUrl && !request.url.startsWith(`${apiBaseUrl}/`)) {
+    return next(request);
+  }
 
   const identity = inject(DevIdentityService);
   const displayName = identity.displayName().trim();
