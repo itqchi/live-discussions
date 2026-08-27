@@ -48,6 +48,7 @@ export class RoomPageComponent implements OnInit {
   readonly settingsSaved = signal(false);
   readonly replyingToId = signal<string | null>(null);
   readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
+  readonly now = signal(Date.now());
   readonly availableReactions = ROOM_REACTION_EMOJIS;
   readonly muteDurations = [
     { label: '15 sec', seconds: 15 },
@@ -77,6 +78,9 @@ export class RoomPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    const clock = setInterval(() => this.now.set(Date.now()), 1000);
+    this.destroyRef.onDestroy(() => clearInterval(clock));
+
     this.route.paramMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
@@ -172,6 +176,15 @@ export class RoomPageComponent implements OnInit {
   canMuteParticipant(role: ParticipantRole, isLocal: boolean): boolean {
     if (!this.facade.canModerate() || isLocal || role === 'owner') return false;
     return role !== 'moderator' || this.facade.currentRole() === 'owner';
+  }
+
+  muteRemainingLabel(mutedUntil: number | null): string {
+    if (!mutedUntil) return '';
+    const seconds = Math.max(0, Math.ceil((mutedUntil - this.now()) / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainder = String(seconds % 60).padStart(2, '0');
+    return `${minutes}:${remainder}`;
   }
 
   async copyOrShareRoomLink(): Promise<void> {
