@@ -15,6 +15,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   ROOM_REACTION_EMOJIS,
   isRoomReactionEmoji,
+  type ParticipantRole,
   type RoomReactionEmoji,
 } from '@live-discussions/contracts';
 import { DevIdentityService } from '../../../../core/dev-identity.service';
@@ -48,6 +49,12 @@ export class RoomPageComponent implements OnInit {
   readonly replyingToId = signal<string | null>(null);
   readonly roomLinkActionStatus = signal<RoomLinkActionStatus>('idle');
   readonly availableReactions = ROOM_REACTION_EMOJIS;
+  readonly muteDurations = [
+    { label: '15 sec', seconds: 15 },
+    { label: '30 sec', seconds: 30 },
+    { label: '1 min', seconds: 60 },
+    { label: '5 min', seconds: 300 },
+  ] as const;
   readonly raisedHands = computed(() =>
     this.facade.audienceParticipants().filter((participant) => participant.raisedHand),
   );
@@ -160,6 +167,11 @@ export class RoomPageComponent implements OnInit {
     void this.facade.closeRoom().then((closed) => {
       if (closed) this.settingsOpen.set(false);
     });
+  }
+
+  canMuteParticipant(role: ParticipantRole, isLocal: boolean): boolean {
+    if (!this.facade.canModerate() || isLocal || role === 'owner') return false;
+    return role !== 'moderator' || this.facade.currentRole() === 'owner';
   }
 
   async copyOrShareRoomLink(): Promise<void> {
