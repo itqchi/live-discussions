@@ -80,6 +80,11 @@ export interface JoinRoomResponse {
   roomTitle: string;
 }
 
+export interface LeaveRoomRequest {
+  /** Public slug or immutable room id. The server only deletes it when LiveKit is empty. */
+  roomId: string;
+}
+
 export interface UpdateRoomSettingsRequest {
   title: string;
   description: string;
