@@ -27,7 +27,7 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.sweepTimer = setInterval(() => void this.sweepFinishedRooms(), SWEEP_INTERVAL_MS);
+    this.sweepTimer = setInterval(() => void this.reconcileFinishedRooms(), SWEEP_INTERVAL_MS);
     this.sweepTimer.unref?.();
   }
 
@@ -74,7 +74,7 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
     await this.clearEphemeralState(roomId);
   }
 
-  private async sweepFinishedRooms(): Promise<void> {
+  async reconcileFinishedRooms(): Promise<void> {
     if (this.sweepRunning) return;
     this.sweepRunning = true;
 
