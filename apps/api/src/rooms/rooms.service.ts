@@ -17,11 +17,15 @@ import type {
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
-import { permissionsForRole } from './room-permissions';
+import {
+  liveKitPublishingPermission,
+  permissionsForRole,
+} from './room-permissions';
 import {
   RoomMembershipService,
   type RoomMembershipState,
 } from './room-membership.service';
+import { RoomModerationService } from './room-moderation.service';
 import { roomSlugFromTitle } from './room-slug';
 
 interface LiveRoomMetadata {
@@ -34,6 +38,7 @@ export class RoomsService {
 
   constructor(
     private readonly memberships: RoomMembershipService,
+    private readonly moderation: RoomModerationService,
     private readonly config: ConfigService,
   ) {}
 
@@ -44,14 +49,16 @@ export class RoomsService {
   async createRoom(request: CreateRoomRequest, user: AuthenticatedUser): Promise<CreateRoomResponse> {
     const slug = roomSlugFromTitle(request.title);
     const summary = await this.memberships.createRoom(slug, request.title, user);
-    const participant = this.toParticipant(user, 'owner', true);
+    const participant = this.toParticipant(user, 'owner', true, null);
 
     return {
       room: {
         id: summary.id,
         slug: summary.slug,
         title: summary.title,
+        description: summary.description,
         isLive: true,
+        isLocked: summary.isLocked,
         participants: [participant],
       },
     };
@@ -61,7 +68,9 @@ export class RoomsService {
     const { livekitUrl, apiKey, apiSecret } = this.liveKitConfig();
     const summary = await this.memberships.getRoomSummary(request.roomId);
     const membership = await this.memberships.resolveMembership(summary.id, user);
-    const participant = this.toParticipant(user, membership.role, membership.onStage);
+    const mutedUntil = await this.moderation.getActiveMuteUntil(summary.id, user.userId);
+    const participant = this.toParticipant(user, membership.role, membership.onStage, mutedUntil);
+    const microphoneAllowed = mutedUntil === null;
 
     const token = new AccessToken(apiKey, apiSecret, {
       identity: user.userId,
@@ -70,6 +79,7 @@ export class RoomsService {
       attributes: {
         raisedHand: 'false',
         onStage: membership.onStage ? 'true' : 'false',
+        mutedUntil: mutedUntil === null ? '' : String(mutedUntil),
       },
       ttl: '1h',
     });
@@ -77,9 +87,7 @@ export class RoomsService {
     token.addGrant({
       roomJoin: true,
       room: summary.id,
-      canSubscribe: true,
-      canPublish: this.canPublish(participant),
-      canPublishData: true,
+      ...liveKitPublishingPermission(membership.role, membership.onStage, microphoneAllowed),
     });
 
     return {
@@ -118,13 +126,14 @@ export class RoomsService {
     }
 
     const next: RoomMembershipState = { ...previous, onStage: request.onStage };
+    const mutedUntil = await this.moderation.getActiveMuteUntil(roomId, user.userId);
     await this.memberships.setMembershipState(roomId, user.userId, next);
 
     try {
       await this.roomServiceClient().updateParticipant(
         roomId,
         user.userId,
-        this.stagePresenceUpdate(next),
+        this.stagePresenceUpdate(next, mutedUntil),
       );
     } catch (error) {
       await this.restoreParticipantState(roomId, user.userId, previous);
@@ -166,6 +175,7 @@ export class RoomsService {
       role,
       onStage: role === 'listener' ? false : membership?.onStage ?? true,
     };
+    const mutedUntil = await this.moderation.getActiveMuteUntil(roomId, userId);
     const roomService = this.roomServiceClient();
 
     const activeRooms = await roomService.listRooms([roomId]);
@@ -175,7 +185,7 @@ export class RoomsService {
     if (!connectedParticipants.some((connected) => connected.identity === userId)) return;
 
     try {
-      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state));
+      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state, mutedUntil));
       return;
     } catch (updateError) {
       let stillConnected: boolean;
@@ -256,6 +266,7 @@ export class RoomsService {
       role: request.role,
       onStage: request.role === 'speaker',
     };
+    const mutedUntil = await this.moderation.getActiveMuteUntil(roomId, request.participantId);
     await this.memberships.setMembershipState(roomId, request.participantId, next);
 
     const roomService = this.roomServiceClient();
@@ -263,16 +274,17 @@ export class RoomsService {
       const info = await roomService.updateParticipant(
         roomId,
         request.participantId,
-        this.participantUpdate(next),
+        this.participantUpdate(next, mutedUntil),
       );
 
       return {
         userId: info.identity,
         displayName: info.name || info.identity,
         role: next.role,
-        permissions: this.effectivePermissions(next.role, next.onStage),
+        permissions: this.effectivePermissions(next.role, next.onStage, mutedUntil),
         raisedHand: false,
         onStage: next.onStage,
+        mutedUntil,
       };
     } catch (error) {
       await this.restoreParticipantState(roomId, request.participantId, previous);
@@ -286,10 +298,11 @@ export class RoomsService {
     state: RoomMembershipState,
   ): Promise<void> {
     await this.memberships.setMembershipState(roomId, userId, state);
+    const mutedUntil = await this.moderation.getActiveMuteUntil(roomId, userId);
     const roomService = this.roomServiceClient();
 
     try {
-      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state));
+      await roomService.updateParticipant(roomId, userId, this.participantUpdate(state, mutedUntil));
     } catch (rollbackError) {
       this.logger.warn(
         `Unable to restore live participant ${userId} in room ${roomId}: ${this.errorMessage(rollbackError)}`,
@@ -304,65 +317,64 @@ export class RoomsService {
     }
   }
 
-  private participantUpdate(state: RoomMembershipState): {
+  private participantUpdate(
+    state: RoomMembershipState,
+    mutedUntil: number | null,
+  ): {
     metadata: string;
     attributes: Record<string, string>;
-    permission: {
-      canSubscribe: boolean;
-      canPublish: boolean;
-      canPublishData: boolean;
-    };
+    permission: ReturnType<typeof liveKitPublishingPermission>;
   } {
     return {
       metadata: JSON.stringify({ role: state.role }),
       attributes: {
         raisedHand: 'false',
         onStage: state.onStage ? 'true' : 'false',
+        mutedUntil: mutedUntil === null ? '' : String(mutedUntil),
       },
-      permission: this.liveKitPermission(state),
+      permission: liveKitPublishingPermission(state.role, state.onStage, mutedUntil === null),
     };
   }
 
-  private stagePresenceUpdate(state: RoomMembershipState): {
+  private stagePresenceUpdate(
+    state: RoomMembershipState,
+    mutedUntil: number | null,
+  ): {
     attributes: Record<string, string>;
-    permission: {
-      canSubscribe: boolean;
-      canPublish: boolean;
-      canPublishData: boolean;
-    };
+    permission: ReturnType<typeof liveKitPublishingPermission>;
   } {
     return {
-      attributes: { onStage: state.onStage ? 'true' : 'false' },
-      permission: this.liveKitPermission(state),
-    };
-  }
-
-  private liveKitPermission(state: RoomMembershipState): {
-    canSubscribe: boolean;
-    canPublish: boolean;
-    canPublishData: boolean;
-  } {
-    const permissions = this.effectivePermissions(state.role, state.onStage);
-    return {
-      canSubscribe: true,
-      canPublish: permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen,
-      canPublishData: true,
+      attributes: {
+        onStage: state.onStage ? 'true' : 'false',
+        mutedUntil: mutedUntil === null ? '' : String(mutedUntil),
+      },
+      permission: liveKitPublishingPermission(state.role, state.onStage, mutedUntil === null),
     };
   }
 
   private effectivePermissions(
     role: ParticipantRole,
     onStage: boolean,
+    mutedUntil: number | null,
   ): RoomParticipant['permissions'] {
     const base = permissionsForRole(role);
-    if (onStage) return base;
+    if (!onStage) {
+      return {
+        ...base,
+        canPublishAudio: false,
+        canPublishVideo: false,
+        canShareScreen: false,
+      };
+    }
 
-    return {
-      ...base,
-      canPublishAudio: false,
-      canPublishVideo: false,
-      canShareScreen: false,
-    };
+    if (mutedUntil !== null) {
+      return {
+        ...base,
+        canPublishAudio: false,
+      };
+    }
+
+    return base;
   }
 
   private async assertCanModerate(roomId: string, userId: string): Promise<'owner' | 'moderator'> {
@@ -410,20 +422,17 @@ export class RoomsService {
     user: AuthenticatedUser,
     role: RoomParticipant['role'],
     onStage = role !== 'listener',
+    mutedUntil: number | null = null,
   ): RoomParticipant {
     return {
       userId: user.userId,
       displayName: user.displayName,
       role,
-      permissions: this.effectivePermissions(role, onStage),
+      permissions: this.effectivePermissions(role, onStage, mutedUntil),
       raisedHand: false,
       onStage,
+      mutedUntil,
     };
-  }
-
-  private canPublish(participant: RoomParticipant): boolean {
-    const permissions = participant.permissions;
-    return permissions.canPublishAudio || permissions.canPublishVideo || permissions.canShareScreen;
   }
 
   private roomServiceClient(): RoomServiceClient {
