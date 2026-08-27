@@ -27,6 +27,8 @@ export interface RoomParticipant {
   permissions: ParticipantPermissions;
   raisedHand: boolean;
   onStage: boolean;
+  /** Unix epoch milliseconds while a moderator-enforced microphone mute is active. */
+  mutedUntil: number | null;
 }
 
 export interface RoomBannedUser {
@@ -141,6 +143,9 @@ export interface RemoveParticipantRequest {
   participantId: string;
 }
 
-export interface MuteParticipantRequest extends RemoveParticipantRequest {}
+export interface MuteParticipantRequest extends RemoveParticipantRequest {
+  /** null means a one-off remote mute. Positive values enforce a timed microphone lockout. */
+  durationSeconds: number | null;
+}
 
 export interface BanParticipantRequest extends RemoveParticipantRequest {}
