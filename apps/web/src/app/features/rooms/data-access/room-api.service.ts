@@ -7,6 +7,7 @@ import type {
   CreateRoomResponse,
   JoinRoomRequest,
   JoinRoomResponse,
+  MuteParticipantRequest,
   RaiseHandRequest,
   RemoveParticipantRequest,
   RoomBannedUser,
@@ -144,6 +145,18 @@ export class RoomApiService {
         request,
       ),
       'Unable to update the pinned comment.',
+    );
+  }
+
+  muteParticipant(request: MuteParticipantRequest): Promise<void> {
+    const roomId = encodeURIComponent(request.roomId);
+    const participantId = encodeURIComponent(request.participantId);
+    return apiRequestToPromise(
+      this.http.patch<void>(
+        `${this.apiBaseUrl}/rooms/${roomId}/participants/${participantId}/mute`,
+        request.durationSeconds === null ? {} : { durationSeconds: request.durationSeconds },
+      ),
+      'Unable to mute this participant.',
     );
   }
 
