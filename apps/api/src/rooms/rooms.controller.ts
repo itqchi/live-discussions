@@ -31,6 +31,7 @@ import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
 import { UpdateRoomSettingsDto } from './dto/update-room-settings.dto';
 import { RoomCommentsService } from './room-comments.service';
+import { RoomLifecycleService } from './room-lifecycle.service';
 import { RoomModerationService } from './room-moderation.service';
 import { RoomSettingsService } from './room-settings.service';
 import { RoomsService } from './rooms.service';
@@ -42,6 +43,7 @@ export class RoomsController {
     private readonly roomComments: RoomCommentsService,
     private readonly roomSettings: RoomSettingsService,
     private readonly roomModeration: RoomModerationService,
+    private readonly roomLifecycle: RoomLifecycleService,
   ) {}
 
   @Get()
@@ -63,6 +65,12 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<JoinRoomResponse> {
     return this.roomsService.createJoinToken(request, user);
+  }
+
+  @Post(':roomId/leave')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async leave(@Param('roomId') roomId: string): Promise<void> {
+    await this.roomLifecycle.handleExplicitLeave(roomId);
   }
 
   @Get(':roomId')
