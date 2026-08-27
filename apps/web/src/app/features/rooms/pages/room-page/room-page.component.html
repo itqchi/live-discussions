@@ -226,7 +226,7 @@
             <span class="font-semibold">{{ participant.name }}</span>
             <span class="ml-2 capitalize text-slate-300">{{ participant.role }}</span>
             @if (participant.isSpeaking) { <span class="ml-2 font-semibold text-emerald-300">Speaking</span> }
-            @if (participant.mutedUntil) { <span class="ml-2 font-semibold text-amber-300">🔇 Mic locked</span> }
+            @if (participant.mutedUntil) { <span class="ml-2 font-semibold text-amber-300">🔇 Mic locked {{ muteRemainingLabel(participant.mutedUntil) }}</span> }
             @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-2 text-xl">{{ emoji }}</span> }
           </div>
         </article>
@@ -252,7 +252,7 @@
             <div class="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-1 text-xs">
               {{ participant.name }}
               @if (participant.isSpeaking) { <span class="ml-1 font-semibold text-emerald-300">Speaking</span> }
-              @if (participant.mutedUntil) { <span class="ml-1 font-semibold text-amber-300">🔇 Mic locked</span> }
+              @if (participant.mutedUntil) { <span class="ml-1 font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }
               @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-1 text-base">{{ emoji }}</span> }
             </div>
           </article>
@@ -271,7 +271,7 @@
           <button class="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950" type="button" (click)="facade.resumeAudio()">Start audio</button>
         }
         @if (facade.microphoneLocked()) {
-          <span class="rounded-xl border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200">🔒 A moderator temporarily locked your microphone</span>
+          <span class="rounded-xl border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200">🔒 Microphone locked for {{ muteRemainingLabel(facade.localMutedUntil()) }}</span>
         }
       </div>
     </section>
@@ -292,7 +292,7 @@
           <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 Mic locked</span> }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
@@ -332,7 +332,7 @@
             <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-900/70 font-bold text-amber-100">{{ initialsFor(participant.name) }}</div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak @if (participant.mutedUntil) { · 🔇 Mic locked }</p>
+              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak @if (participant.mutedUntil) { · 🔇 {{ muteRemainingLabel(participant.mutedUntil) }} }</p>
             </div>
 
             @if (facade.canModerate() && !participant.isLocal && participant.role !== 'moderator' && participant.role !== 'owner') {
@@ -378,7 +378,7 @@
           <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 Mic locked</span> }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
