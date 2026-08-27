@@ -199,6 +199,16 @@ export class RoomsController {
     );
   }
 
+  @Delete(':roomId/participants/:participantId/mute')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async releaseTimedMute(
+    @Param('roomId') roomId: string,
+    @Param('participantId') participantId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomModeration.releaseTimedMute(roomId, participantId, user);
+  }
+
   @Delete(':roomId/participants/:participantId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeParticipant(
