@@ -69,8 +69,11 @@ export class RoomsController {
 
   @Post(':roomId/leave')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async leave(@Param('roomId') roomId: string): Promise<void> {
-    await this.roomLifecycle.handleExplicitLeave(roomId);
+  async leave(
+    @Param('roomId') roomId: string,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomLifecycle.handleExplicitLeave(roomId, user.userId);
   }
 
   @Get(':roomId')

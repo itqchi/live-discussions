@@ -344,9 +344,19 @@ export class RoomFacade {
   }
 
   async leave(): Promise<void> {
+    const roomId = this.roomId();
     ++this.joinAttempt;
     this.joining.set(false);
     await this.disconnectMediaSafely();
+
+    if (roomId) {
+      try {
+        await this.api.leaveRoom(roomId);
+      } catch {
+        // LiveKit's departure timeout and the API sweeper remain the fallback.
+      }
+    }
+
     await this.returnToOrigin();
   }
 

@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -41,13 +42,18 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
    * Browser refresh/navigation teardown does not call this endpoint, so LiveKit's
    * departure timeout protects the room while the browser reconnects.
    */
-  async handleExplicitLeave(identifier: string): Promise<boolean> {
+  async handleExplicitLeave(identifier: string, userId: string): Promise<boolean> {
     let roomId: string;
     try {
       roomId = await this.memberships.resolveRoomId(identifier);
     } catch (error) {
       if (error instanceof NotFoundException) return true;
       throw error;
+    }
+
+    const membership = await this.memberships.getMembership(roomId, userId);
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this room.');
     }
 
     const [room] = await this.roomServiceClient().listRooms([roomId]);

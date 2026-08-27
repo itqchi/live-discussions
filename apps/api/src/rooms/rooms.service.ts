@@ -266,7 +266,14 @@ export class RoomsService {
     }
 
     const roomService = this.roomServiceClient();
-    await roomService.removeParticipant(roomId, request.participantId);
+    const activeRooms = await roomService.listRooms([roomId]);
+    if (activeRooms.length === 0) return;
+
+    const connectedParticipants = await roomService.listParticipants(roomId);
+    if (connectedParticipants.some((participant) => participant.identity === request.participantId)) {
+      await roomService.removeParticipant(roomId, request.participantId);
+    }
+
     await this.clearFeaturedParticipantIfMatches(roomService, roomId, request.participantId);
   }
 

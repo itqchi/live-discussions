@@ -34,14 +34,34 @@ jobs:
       - name: Smoke test compiled API
         env:
           DATABASE_DRIVER: memory
-          LIVEKIT_URL: wss://ci.livekit.example
-          LIVEKIT_API_KEY: ci-api-key
-          LIVEKIT_API_SECRET: ci-api-secret
+          LIVEKIT_URL: ws://127.0.0.1:7880
+          LIVEKIT_API_KEY: devkey
+          LIVEKIT_API_SECRET: secret
           PORT: 3100
         run: |
+          docker run --detach --rm \
+            --name live-discussions-livekit \
+            --publish 7880:7880 \
+            livekit/livekit-server:v1.13.5 \
+            --dev --bind 0.0.0.0
+
+          LIVEKIT_READY=0
+          for _ in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/7880) 2>/dev/null; then
+              LIVEKIT_READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$LIVEKIT_READY" -ne 1 ]; then
+            docker logs live-discussions-livekit
+            exit 1
+          fi
+
           npm run start:api:production > /tmp/live-discussions-api.log 2>&1 &
           API_PID=$!
-          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+          trap 'kill "$API_PID" 2>/dev/null || true; docker stop live-discussions-livekit > /dev/null 2>&1 || true' EXIT
 
           READY=0
           for _ in $(seq 1 20); do
@@ -60,6 +80,7 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:3100/rooms > /dev/null
           API_BASE_URL=http://127.0.0.1:3100 node scripts/smoke-api.mjs
           API_BASE_URL=http://127.0.0.1:3100 node scripts/smoke-room-pins.mjs
+          API_BASE_URL=http://127.0.0.1:3100 node scripts/smoke-room-bans.mjs
 
       - name: Verify hosted runtime config
         env:

@@ -309,6 +309,41 @@ await expectJson(
   },
 );
 
+const ephemeralRoom = await expectJson(
+  'POST',
+  '/rooms',
+  { title: 'CI Explicit Leave Room' },
+  ownerHeaders,
+  201,
+  (body) => {
+    assert(uuidPattern.test(body.room?.id ?? ''), 'Explicit-leave room id must be a UUID.');
+  },
+);
+
+await expectStatus(
+  'POST',
+  `/rooms/${encodeURIComponent(ephemeralRoom.room.id)}/leave`,
+  {},
+  memberHeaders,
+  403,
+);
+
+await expectStatus(
+  'POST',
+  `/rooms/${encodeURIComponent(ephemeralRoom.room.id)}/leave`,
+  {},
+  ownerHeaders,
+  204,
+);
+
+await expectStatus(
+  'GET',
+  `/rooms/${encodeURIComponent(ephemeralRoom.room.id)}`,
+  undefined,
+  undefined,
+  404,
+);
+
 console.log('✓ Compiled API behavior smoke tests passed');
 
 function devHeaders(userId, displayName) {

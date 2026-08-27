@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .nx/
+.angular/
+tmp/
 .env
 .env.local
 .env.*.local
