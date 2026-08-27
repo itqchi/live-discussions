@@ -141,4 +141,6 @@ export interface RemoveParticipantRequest {
   participantId: string;
 }
 
+export interface MuteParticipantRequest extends RemoveParticipantRequest {}
+
 export interface BanParticipantRequest extends RemoveParticipantRequest {}
