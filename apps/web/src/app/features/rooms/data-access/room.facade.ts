@@ -46,6 +46,7 @@ export class RoomFacade {
   readonly savingSettings = signal(false);
   readonly loadingBans = signal(false);
   readonly updatingBanUserId = signal<string | null>(null);
+  readonly mutingParticipantId = signal<string | null>(null);
   readonly closingRoom = signal(false);
   readonly error = signal<string | null>(null);
   readonly participant = signal<JoinRoomResponse['participant'] | null>(null);
@@ -67,8 +68,15 @@ export class RoomFacade {
   readonly isLocalOnStage = computed(() =>
     this.localPresence()?.onStage ?? this.participant()?.onStage ?? false,
   );
+  readonly localMutedUntil = computed(() =>
+    this.localPresence()?.mutedUntil ?? this.participant()?.mutedUntil ?? null,
+  );
+  readonly microphoneLocked = computed(() => {
+    const mutedUntil = this.localMutedUntil();
+    return mutedUntil !== null && mutedUntil > Date.now();
+  });
   readonly canPublishAudio = computed(() =>
-    this.currentRole() !== 'listener' && this.isLocalOnStage(),
+    this.currentRole() !== 'listener' && this.isLocalOnStage() && !this.microphoneLocked(),
   );
   readonly canPublishVideo = computed(() =>
     this.currentRole() !== 'listener' && this.isLocalOnStage(),
@@ -294,6 +302,21 @@ export class RoomFacade {
     }
   }
 
+  async muteParticipant(participantId: string, durationSeconds: number | null = null): Promise<void> {
+    const roomId = this.roomId();
+    if (!roomId || !this.canModerate() || this.mutingParticipantId()) return;
+
+    this.mutingParticipantId.set(participantId);
+    this.error.set(null);
+    try {
+      await this.api.muteParticipant({ roomId, participantId, durationSeconds });
+    } catch (error) {
+      this.error.set(this.errorMessage(error, 'Unable to mute this participant.'));
+    } finally {
+      this.mutingParticipantId.set(null);
+    }
+  }
+
   async closeRoom(): Promise<boolean> {
     const roomId = this.roomId();
     if (!roomId || !this.canCloseRoom() || this.closingRoom()) return false;
@@ -485,6 +508,11 @@ export class RoomFacade {
   }
 
   async toggleMicrophone(): Promise<void> {
+    if (this.microphoneLocked()) {
+      this.error.set('Your microphone is temporarily locked by a room moderator.');
+      return;
+    }
+
     await this.runAction(
       () => this.media.setMicrophone(!this.microphoneEnabled()),
       'Unable to change microphone state.',
@@ -611,6 +639,7 @@ export class RoomFacade {
     this.roomLocked.set(false);
     this.pinnedCommentIds.set(new Set());
     this.bannedUsers.set([]);
+    this.mutingParticipantId.set(null);
     this.roomId.set(null);
   }
 
