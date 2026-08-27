@@ -226,6 +226,7 @@
             <span class="font-semibold">{{ participant.name }}</span>
             <span class="ml-2 capitalize text-slate-300">{{ participant.role }}</span>
             @if (participant.isSpeaking) { <span class="ml-2 font-semibold text-emerald-300">Speaking</span> }
+            @if (participant.mutedUntil) { <span class="ml-2 font-semibold text-amber-300">🔇 Mic locked</span> }
             @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-2 text-xl">{{ emoji }}</span> }
           </div>
         </article>
@@ -251,6 +252,7 @@
             <div class="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-1 text-xs">
               {{ participant.name }}
               @if (participant.isSpeaking) { <span class="ml-1 font-semibold text-emerald-300">Speaking</span> }
+              @if (participant.mutedUntil) { <span class="ml-1 font-semibold text-amber-300">🔇 Mic locked</span> }
               @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-1 text-base">{{ emoji }}</span> }
             </div>
           </article>
@@ -258,7 +260,7 @@
       </div>
 
       <div class="mt-6 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
-        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleMicrophone()" [disabled]="!facade.connected() || !facade.canPublishAudio()">{{ facade.microphoneEnabled() ? 'Mute' : 'Mic' }}</button>
+        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleMicrophone()" [disabled]="!facade.connected() || !facade.canPublishAudio() || facade.microphoneLocked()">{{ facade.microphoneLocked() ? 'Mic locked' : facade.microphoneEnabled() ? 'Mute' : 'Mic' }}</button>
         <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleCamera()" [disabled]="!facade.connected() || !facade.canPublishVideo()">{{ facade.cameraEnabled() ? 'Stop camera' : 'Camera' }}</button>
         <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleScreenShare()" [disabled]="!facade.connected() || !facade.canShareScreen()">{{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}</button>
         <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleRaisedHand()" [disabled]="!facade.connected()">{{ facade.raisedHand() ? 'Lower hand' : 'Raise hand' }}</button>
@@ -267,6 +269,9 @@
         }
         @if (facade.audioPlaybackBlocked()) {
           <button class="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950" type="button" (click)="facade.resumeAudio()">Start audio</button>
+        }
+        @if (facade.microphoneLocked()) {
+          <span class="rounded-xl border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200">🔒 A moderator temporarily locked your microphone</span>
         }
       </div>
     </section>
@@ -287,16 +292,27 @@
           <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 Mic locked</span> }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
               <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
-              <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+              <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
                 @if (facade.featuredParticipantId() === participant.identity) {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
                 } @else {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
+                @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                  <div class="mt-1 border-y border-slate-800 py-1">
+                    <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                    <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                      @for (duration of muteDurations; track duration.seconds) {
+                        <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                      }
+                    </div>
+                  </div>
                 }
                 @if (participant.role !== 'moderator') {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.moveToAudience(participant.identity)">Move to audience</button>
@@ -316,7 +332,7 @@
             <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-900/70 font-bold text-amber-100">{{ initialsFor(participant.name) }}</div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak</p>
+              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak @if (participant.mutedUntil) { · 🔇 Mic locked }</p>
             </div>
 
             @if (facade.canModerate() && !participant.isLocal && participant.role !== 'moderator' && participant.role !== 'owner') {
@@ -326,11 +342,22 @@
             @if (facade.canModerate() && !participant.isLocal) {
               <details liveDiscussionsDismissibleDetails class="relative shrink-0">
                 <summary class="cursor-pointer list-none px-1 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
-                <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
                   @if (facade.featuredParticipantId() === participant.identity) {
                     <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
                   } @else {
                     <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                  }
+                  @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                    <div class="mt-1 border-y border-slate-800 py-1">
+                      <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                      <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                      <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                        @for (duration of muteDurations; track duration.seconds) {
+                          <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                        }
+                      </div>
+                    </div>
                   }
                   @if (participant.role !== 'moderator' && participant.role !== 'owner') {
                     <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
@@ -351,16 +378,27 @@
           <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
-            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 Mic locked</span> }</p>
           </div>
           @if (facade.canModerate() && !participant.isLocal) {
             <details liveDiscussionsDismissibleDetails class="relative">
               <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
-              <div class="absolute right-0 top-8 z-30 w-52 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+              <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
                 @if (facade.featuredParticipantId() === participant.identity) {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
                 } @else {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
+                @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                  <div class="mt-1 border-y border-slate-800 py-1">
+                    <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                    <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                      @for (duration of muteDurations; track duration.seconds) {
+                        <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                      }
+                    </div>
+                  </div>
                 }
                 @if (participant.role !== 'moderator') {
                   <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(participant.identity)">Invite to speak</button>
