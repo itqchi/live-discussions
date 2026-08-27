@@ -7,30 +7,28 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomServiceClient } from 'livekit-server-sdk';
+import { RoomCommentsService } from './room-comments.service';
 import { RoomMembershipService } from './room-membership.service';
+import { RoomModerationService } from './room-moderation.service';
 
-const DEFAULT_EMPTY_GRACE_SECONDS = 45;
-const MIN_EMPTY_GRACE_SECONDS = 10;
-const MAX_EMPTY_GRACE_SECONDS = 300;
-const SWEEP_INTERVAL_MS = 10_000;
+const SWEEP_INTERVAL_MS = 5_000;
 
 @Injectable()
 export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RoomLifecycleService.name);
-  private readonly emptySince = new Map<string, number>();
-  private readonly emptyGraceMs: number;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private sweepRunning = false;
 
   constructor(
     private readonly memberships: RoomMembershipService,
+    private readonly comments: RoomCommentsService,
+    private readonly moderation: RoomModerationService,
     private readonly config: ConfigService,
-  ) {
-    this.emptyGraceMs = this.resolveEmptyGraceMs();
-  }
+  ) {}
 
   onModuleInit(): void {
-    this.sweepTimer = setInterval(() => void this.sweepEmptyRooms(), SWEEP_INTERVAL_MS);
+    this.sweepTimer = setInterval(() => void this.sweepFinishedRooms(), SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref?.();
   }
 
   onModuleDestroy(): void {
@@ -39,9 +37,9 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Called after a client intentionally disconnects. If it was the final
-   * participant, remove the application room immediately. Browser refreshes do
-   * not call this path, so they are protected by the empty-room grace window.
+   * Called only for an intentional Leave after the client has disconnected.
+   * Browser refresh/navigation teardown does not call this endpoint, so LiveKit's
+   * departure timeout protects the room while the browser reconnects.
    */
   async handleExplicitLeave(identifier: string): Promise<boolean> {
     let roomId: string;
@@ -52,82 +50,65 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
 
-    const participantCount = await this.connectedParticipantCount(roomId);
-    if (participantCount > 0) {
-      this.emptySince.delete(roomId);
-      return false;
-    }
+    const [room] = await this.roomServiceClient().listRooms([roomId]);
+    if (room && Number(room.numParticipants ?? 0) > 0) return false;
 
-    return this.deleteRoomIfStillEmpty(roomId);
+    await this.deleteRoom(roomId);
+    return true;
   }
 
-  private async sweepEmptyRooms(): Promise<void> {
+  /** Force-delete a room and all of its ephemeral application state. */
+  async deleteRoom(identifier: string): Promise<void> {
+    let roomId: string;
+    try {
+      roomId = await this.memberships.resolveRoomId(identifier);
+    } catch (error) {
+      if (error instanceof NotFoundException) return;
+      throw error;
+    }
+
+    const roomService = this.roomServiceClient();
+    const [liveRoom] = await roomService.listRooms([roomId]);
+    if (liveRoom) await roomService.deleteRoom(roomId);
+
+    await this.clearEphemeralState(roomId);
+  }
+
+  private async sweepFinishedRooms(): Promise<void> {
     if (this.sweepRunning) return;
     this.sweepRunning = true;
 
     try {
-      const rooms = await this.memberships.listRooms();
-      const roomIds = new Set(rooms.map((room) => room.id));
-      for (const trackedRoomId of this.emptySince.keys()) {
-        if (!roomIds.has(trackedRoomId)) this.emptySince.delete(trackedRoomId);
-      }
-      if (rooms.length === 0) return;
+      const applicationRooms = await this.memberships.listRooms();
+      if (applicationRooms.length === 0) return;
 
       const liveRooms = await this.roomServiceClient().listRooms();
-      const connectedByRoomId = new Map(
-        liveRooms.map((room) => [room.name, Number(room.numParticipants ?? 0)]),
-      );
-      const now = Date.now();
+      const liveRoomIds = new Set(liveRooms.map((room) => room.name));
 
-      for (const room of rooms) {
-        const participantCount = connectedByRoomId.get(room.id) ?? 0;
-        if (participantCount > 0) {
-          this.emptySince.delete(room.id);
-          continue;
-        }
-
-        const since = this.emptySince.get(room.id);
-        if (since === undefined) {
-          this.emptySince.set(room.id, now);
-          continue;
-        }
-
-        if (now - since >= this.emptyGraceMs) {
-          await this.deleteRoomIfStillEmpty(room.id);
-        }
+      for (const room of applicationRooms) {
+        // A LiveKit room with zero participants is intentionally kept here:
+        // emptyTimeout protects a newly created room and departureTimeout protects reloads.
+        if (liveRoomIds.has(room.id)) continue;
+        await this.clearEphemeralState(room.id);
+        this.logger.log(`Removed finished ephemeral room ${room.id}.`);
       }
     } catch (error) {
-      // Fail safe: a LiveKit/API outage must never cause application rooms to be deleted.
-      this.logger.warn(`Unable to reconcile empty rooms: ${this.errorMessage(error)}`);
+      // Fail safe: a LiveKit outage must never cause application room state to be deleted.
+      this.logger.warn(`Unable to reconcile finished rooms: ${this.errorMessage(error)}`);
     } finally {
       this.sweepRunning = false;
     }
   }
 
-  private async deleteRoomIfStillEmpty(roomId: string): Promise<boolean> {
-    const roomService = this.roomServiceClient();
-    const [liveRoom] = await roomService.listRooms([roomId]);
-    if (liveRoom && Number(liveRoom.numParticipants ?? 0) > 0) {
-      this.emptySince.delete(roomId);
-      return false;
-    }
-
-    if (liveRoom) await roomService.deleteRoom(roomId);
-
+  private async clearEphemeralState(roomId: string): Promise<void> {
     try {
       await this.memberships.deleteRoom(roomId);
     } catch (error) {
       if (!(error instanceof NotFoundException)) throw error;
+    } finally {
+      this.comments.clearRoom(roomId);
+      this.moderation.clearRoom(roomId);
     }
-
-    this.emptySince.delete(roomId);
-    this.logger.log(`Deleted empty room ${roomId}.`);
-    return true;
-  }
-
-  private async connectedParticipantCount(roomId: string): Promise<number> {
-    const [room] = await this.roomServiceClient().listRooms([roomId]);
-    return Number(room?.numParticipants ?? 0);
   }
 
   private roomServiceClient(): RoomServiceClient {
@@ -136,14 +117,6 @@ export class RoomLifecycleService implements OnModuleInit, OnModuleDestroy {
     const apiSecret = this.config.getOrThrow<string>('LIVEKIT_API_SECRET').trim();
     const serviceUrl = livekitUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
     return new RoomServiceClient(serviceUrl, apiKey, apiSecret);
-  }
-
-  private resolveEmptyGraceMs(): number {
-    const configured = Number(this.config.get<string>('ROOM_EMPTY_GRACE_SECONDS'));
-    const seconds = Number.isInteger(configured)
-      ? Math.min(MAX_EMPTY_GRACE_SECONDS, Math.max(MIN_EMPTY_GRACE_SECONDS, configured))
-      : DEFAULT_EMPTY_GRACE_SECONDS;
-    return seconds * 1000;
   }
 
   private errorMessage(error: unknown): string {
