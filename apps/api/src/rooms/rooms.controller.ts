@@ -22,6 +22,7 @@ import { DevUser } from '../auth/dev-user.decorator';
 import { CreateRoomCommentDto } from './dto/create-room-comment.dto';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
+import { MuteParticipantDto } from './dto/mute-participant.dto';
 import { RaiseHandDto } from './dto/raise-hand.dto';
 import { SetFeaturedParticipantDto } from './dto/set-featured-participant.dto';
 import { SetRoomCommentPinnedDto } from './dto/set-room-comment-pinned.dto';
@@ -30,6 +31,7 @@ import { SetStagePresenceDto } from './dto/set-stage-presence.dto';
 import { UpdateParticipantRoleDto } from './dto/update-participant-role.dto';
 import { UpdateRoomSettingsDto } from './dto/update-room-settings.dto';
 import { RoomCommentsService } from './room-comments.service';
+import { RoomModerationService } from './room-moderation.service';
 import { RoomSettingsService } from './room-settings.service';
 import { RoomsService } from './rooms.service';
 
@@ -39,6 +41,7 @@ export class RoomsController {
     private readonly roomsService: RoomsService,
     private readonly roomComments: RoomCommentsService,
     private readonly roomSettings: RoomSettingsService,
+    private readonly roomModeration: RoomModerationService,
   ) {}
 
   @Get()
@@ -176,6 +179,24 @@ export class RoomsController {
     @DevUser() user: AuthenticatedUser,
   ): Promise<RoomParticipant> {
     return this.roomsService.updateParticipantRole(request, user);
+  }
+
+  @Patch(':roomId/participants/:participantId/mute')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async muteParticipant(
+    @Param('roomId') roomId: string,
+    @Param('participantId') participantId: string,
+    @Body() request: MuteParticipantDto,
+    @DevUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.roomModeration.muteParticipantMicrophone(
+      {
+        roomId,
+        participantId,
+        durationSeconds: request.durationSeconds ?? null,
+      },
+      user,
+    );
   }
 
   @Delete(':roomId/participants/:participantId')
