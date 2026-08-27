@@ -12,7 +12,6 @@ import type {
   HouseSummary,
   JoinHouseRequest,
   JoinHouseResponse,
-  RoomSummary,
   UpdateHouseRequest,
 } from '@live-discussions/contracts';
 import { randomUUID } from 'node:crypto';
@@ -26,7 +25,6 @@ interface HouseRecord {
   description: string;
   members: Map<string, HouseMemberRole>;
   memberNames: Map<string, string>;
-  roomIds: string[];
 }
 
 interface HouseSummaryRow {
@@ -34,12 +32,6 @@ interface HouseSummaryRow {
   name: string;
   description: string;
   member_count: string;
-  room_count: string;
-  room_ids: string[];
-}
-
-interface DatabaseErrorLike {
-  code?: string;
 }
 
 @Injectable()
@@ -55,36 +47,25 @@ export class HousesService {
 
   async listHouses(): Promise<HouseSummary[]> {
     if (!this.database.configured) {
-      return [...this.houses.values()]
-        .map((house) => this.toSummary(house))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const summaries = await Promise.all([...this.houses.values()].map((house) => this.toSummary(house)));
+      return summaries.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     const result = await this.database.query<HouseSummaryRow>(
       `SELECT house.id, house.name, house.description,
-         COUNT(DISTINCT member.user_id)::text AS member_count,
-         COUNT(DISTINCT house_room.room_id)::text AS room_count,
-         COALESCE(
-           ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL),
-           ARRAY[]::text[]
-         ) AS room_ids
+              COUNT(DISTINCT member.user_id)::text AS member_count
        FROM discussion_house house
        LEFT JOIN house_member member ON member.house_id = house.id
-       LEFT JOIN house_room ON house_room.house_id = house.id
        GROUP BY house.id, house.name, house.description
        ORDER BY house.name ASC`,
     );
-    return result.rows.map((row) => this.summaryFromRow(row));
+
+    return Promise.all(result.rows.map((row) => this.summaryFromRow(row)));
   }
 
   async getHouse(houseId: string, user: AuthenticatedUser | null): Promise<GetHouseResponse> {
     const house = await this.getHouseSummary(houseId);
-    const rooms = await this.existingRooms(house.roomIds);
-
-    if (!this.database.configured) {
-      this.getHouseRecord(houseId).roomIds = rooms.map((room) => room.id);
-    }
-
+    const rooms = await this.roomMemberships.listRoomsForHouse(houseId);
     const [role, members] = await Promise.all([
       user ? this.getMemberRole(houseId, user.userId) : Promise.resolve(null),
       this.getMembers(houseId),
@@ -113,10 +94,9 @@ export class HousesService {
         description: request.description,
         members: new Map([[owner.userId, 'owner']]),
         memberNames: new Map([[owner.userId, owner.displayName]]),
-        roomIds: [],
       };
       this.houses.set(id, house);
-      return { house: this.toSummary(house), role: 'owner' };
+      return { house: await this.toSummary(house), role: 'owner' };
     }
 
     await this.database.transaction(async (client) => {
@@ -185,7 +165,7 @@ export class HousesService {
       const role: HouseMemberRole = house.members.get(user.userId) ?? 'member';
       house.members.set(user.userId, role);
       house.memberNames.set(user.userId, user.displayName);
-      return { house: this.toSummary(house), role };
+      return { house: await this.toSummary(house), role };
     }
 
     const role = await this.database.transaction<HouseMemberRole>(async (client) => {
@@ -256,12 +236,12 @@ export class HousesService {
       displayName = result.rows[0].display_name;
     }
 
-    const house = await this.getHouseSummary(houseId);
+    const rooms = await this.roomMemberships.listRoomsForHouse(houseId);
     const roomRole = role === 'admin' ? 'moderator' : 'listener';
     await Promise.all(
-      house.roomIds.map(async (roomId) => {
-        await this.roomMemberships.ensureRole(roomId, targetUserId, roomRole, displayName);
-        await this.roomsService.syncParticipantRoleIfConnected(roomId, targetUserId, roomRole);
+      rooms.map(async (room) => {
+        await this.roomMemberships.ensureRole(room.id, targetUserId, roomRole, displayName);
+        await this.roomsService.syncParticipantRoleIfConnected(room.id, targetUserId, roomRole);
       }),
     );
 
@@ -279,20 +259,15 @@ export class HousesService {
     }
 
     const normalizedName = this.normalizeRoomName(request.title);
-    const reservationKey = this.database.configured
-      ? null
-      : `${houseId}\u0000${normalizedName}`;
-
-    if (reservationKey) {
-      if (this.roomNameReservations.has(reservationKey)) {
-        throw new ConflictException('A room with this name is already being created in this House.');
-      }
-      this.roomNameReservations.add(reservationKey);
+    const reservationKey = `${houseId}\u0000${normalizedName}`;
+    if (this.roomNameReservations.has(reservationKey)) {
+      throw new ConflictException('A room with this name is already being created in this House.');
     }
+    this.roomNameReservations.add(reservationKey);
 
     try {
-      const house = await this.getHouseSummary(houseId);
-      const rooms = await this.existingRooms(house.roomIds);
+      await this.getHouseSummary(houseId);
+      const rooms = await this.roomMemberships.listRoomsForHouse(houseId);
       if (rooms.some((room) => this.normalizeRoomName(room.title) === normalizedName)) {
         throw new ConflictException('A room with this name already exists in this House.');
       }
@@ -305,40 +280,22 @@ export class HousesService {
         userId: houseOwner.userId,
         displayName: houseOwner.displayName,
       };
-      const response = await this.roomsService.createRoom(request, roomOwner);
+      const response = await this.roomsService.createRoom(request, roomOwner, houseId);
       const roomId = response.room.id;
 
       try {
-        if (!this.database.configured) {
-          this.getHouseRecord(houseId).roomIds.push(roomId);
-        } else {
-          await this.database.query(
-            'INSERT INTO house_room (house_id, room_id) VALUES ($1, $2)',
-            [houseId, roomId],
-          );
-        }
-
         await this.persistAdminsToRoom(houseId, roomId);
         return response;
       } catch (error) {
-        if (!this.database.configured) {
-          const record = this.getHouseRecord(houseId);
-          record.roomIds = record.roomIds.filter((id) => id !== roomId);
-        }
-
         try {
-          await this.roomMemberships.deleteRoom(roomId);
+          await this.roomsService.closeRoom({ roomId }, roomOwner);
         } catch {
-          // Preserve the original linking/persistence failure.
-        }
-
-        if (this.isUniqueViolation(error)) {
-          throw new ConflictException('A room with this name already exists in this House.');
+          // Preserve the original admin-inheritance failure.
         }
         throw error;
       }
     } finally {
-      if (reservationKey) this.roomNameReservations.delete(reservationKey);
+      this.roomNameReservations.delete(reservationKey);
     }
   }
 
@@ -348,31 +305,12 @@ export class HousesService {
       throw new ForbiddenException('Only the House owner or an admin can close rooms.');
     }
 
-    const house = await this.getHouseSummary(houseId);
-    if (!house.roomIds.includes(roomId)) {
+    const roomHouseId = await this.roomMemberships.getHouseId(roomId);
+    if (roomHouseId !== houseId) {
       throw new NotFoundException('Room does not belong to this House.');
     }
 
     await this.roomsService.closeRoom({ roomId }, user);
-    if (!this.database.configured) {
-      const record = this.getHouseRecord(houseId);
-      record.roomIds = record.roomIds.filter((id) => id !== roomId);
-    }
-  }
-
-  private async existingRooms(roomIds: string[]): Promise<RoomSummary[]> {
-    const rooms = await Promise.all(
-      roomIds.map(async (roomId): Promise<RoomSummary | null> => {
-        try {
-          return await this.roomMemberships.getRoomSummary(roomId);
-        } catch (error) {
-          if (error instanceof NotFoundException) return null;
-          throw error;
-        }
-      }),
-    );
-
-    return rooms.filter((room): room is RoomSummary => room !== null);
   }
 
   private async persistAdminsToRoom(houseId: string, roomId: string): Promise<void> {
@@ -428,15 +366,9 @@ export class HousesService {
 
     const result = await this.database.query<HouseSummaryRow>(
       `SELECT house.id, house.name, house.description,
-         COUNT(DISTINCT member.user_id)::text AS member_count,
-         COUNT(DISTINCT house_room.room_id)::text AS room_count,
-         COALESCE(
-           ARRAY_AGG(DISTINCT house_room.room_id) FILTER (WHERE house_room.room_id IS NOT NULL),
-           ARRAY[]::text[]
-         ) AS room_ids
+              COUNT(DISTINCT member.user_id)::text AS member_count
        FROM discussion_house house
        LEFT JOIN house_member member ON member.house_id = house.id
-       LEFT JOIN house_room ON house_room.house_id = house.id
        WHERE house.id = $1
        GROUP BY house.id, house.name, house.description`,
       [houseId],
@@ -463,37 +395,33 @@ export class HousesService {
     return title.trim().toLowerCase();
   }
 
-  private isUniqueViolation(error: unknown): boolean {
-    return typeof error === 'object'
-      && error !== null
-      && (error as DatabaseErrorLike).code === '23505';
-  }
-
   private getHouseRecord(houseId: string): HouseRecord {
     const house = this.houses.get(houseId);
     if (!house) throw new NotFoundException('House not found.');
     return house;
   }
 
-  private toSummary(house: HouseRecord): HouseSummary {
+  private async toSummary(house: HouseRecord): Promise<HouseSummary> {
+    const rooms = await this.roomMemberships.listRoomsForHouse(house.id);
     return {
       id: house.id,
       name: house.name,
       description: house.description,
       memberCount: house.members.size,
-      roomCount: house.roomIds.length,
-      roomIds: [...house.roomIds],
+      roomCount: rooms.length,
+      roomIds: rooms.map((room) => room.id),
     };
   }
 
-  private summaryFromRow(row: HouseSummaryRow): HouseSummary {
+  private async summaryFromRow(row: HouseSummaryRow): Promise<HouseSummary> {
+    const rooms = await this.roomMemberships.listRoomsForHouse(row.id);
     return {
       id: row.id,
       name: row.name,
       description: row.description,
       memberCount: Number(row.member_count),
-      roomCount: Number(row.room_count),
-      roomIds: row.room_ids,
+      roomCount: rooms.length,
+      roomIds: rooms.map((room) => room.id),
     };
   }
 }
