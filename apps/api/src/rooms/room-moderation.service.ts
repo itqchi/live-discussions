@@ -78,18 +78,7 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
     actor: AuthenticatedUser,
   ): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
-    const actorRole = await this.memberships.getRole(roomId, actor.userId);
-    if (actorRole !== 'owner' && actorRole !== 'moderator') {
-      throw new ForbiddenException('Only owners and moderators can mute participants.');
-    }
-
-    if (request.participantId === actor.userId) {
-      throw new ForbiddenException('Use your own microphone control to mute yourself.');
-    }
-
-    const target = await this.memberships.getMembership(roomId, request.participantId);
-    if (!target) throw new ForbiddenException('Participant is not a room member.');
-    this.assertMuteHierarchy(actorRole, target.role);
+    const { target } = await this.resolveMuteTarget(roomId, request.participantId, actor);
 
     const roomService = this.roomServiceClient();
     const participant = await roomService.getParticipant(roomId, request.participantId);
@@ -118,6 +107,61 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.scheduleMuteExpiry(roomId, request.participantId, mutedUntil);
+  }
+
+  async releaseTimedMute(
+    identifier: string,
+    participantId: string,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    const roomId = await this.memberships.resolveRoomId(identifier);
+    const { target } = await this.resolveMuteTarget(roomId, participantId, actor);
+    const mutedUntil = await this.readMuteUntil(roomId, participantId);
+    if (!mutedUntil) return;
+
+    await this.setPersistedMuteUntil(roomId, participantId, null);
+    this.cancelMuteTimer(roomId, participantId);
+
+    const roomService = this.roomServiceClient();
+    const activeRooms = await roomService.listRooms([roomId]);
+    if (activeRooms.length === 0) return;
+
+    const connected = await roomService.listParticipants(roomId);
+    if (!connected.some((participant) => participant.identity === participantId)) return;
+
+    try {
+      await roomService.updateParticipant(roomId, participantId, {
+        attributes: { mutedUntil: '' },
+        permission: liveKitPublishingPermission(target.role, target.onStage, true),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Unable to release timed microphone mute for ${participantId} in ${roomId}; disconnecting participant: ${this.errorMessage(error)}`,
+      );
+      await roomService.removeParticipant(roomId, participantId);
+    }
+  }
+
+  private async resolveMuteTarget(
+    roomId: string,
+    participantId: string,
+    actor: AuthenticatedUser,
+  ): Promise<{
+    target: NonNullable<Awaited<ReturnType<RoomMembershipService['getMembership']>>>;
+  }> {
+    const actorRole = await this.memberships.getRole(roomId, actor.userId);
+    if (actorRole !== 'owner' && actorRole !== 'moderator') {
+      throw new ForbiddenException('Only owners and moderators can mute participants.');
+    }
+
+    if (participantId === actor.userId) {
+      throw new ForbiddenException('Use your own microphone control to mute yourself.');
+    }
+
+    const target = await this.memberships.getMembership(roomId, participantId);
+    if (!target) throw new ForbiddenException('Participant is not a room member.');
+    this.assertMuteHierarchy(actorRole, target.role);
+    return { target };
   }
 
   private assertMuteHierarchy(actorRole: ParticipantRole, targetRole: ParticipantRole): void {
