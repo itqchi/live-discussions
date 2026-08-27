@@ -12,26 +12,22 @@ import type {
   UpdateRoomSettingsRequest,
 } from '@live-discussions/contracts';
 import { randomUUID } from 'node:crypto';
-import { DatabaseService } from '../database/database.service';
 
 export interface RoomMembershipState {
   role: ParticipantRole;
   onStage: boolean;
 }
 
-interface MemoryRoom {
+interface LiveRoomRecord {
   id: string;
   slug: string;
   title: string;
   description: string;
   isLocked: boolean;
+  houseId: string | null;
   members: Map<string, RoomMembershipState>;
   memberNames: Map<string, string>;
   bannedUsers: Map<string, string>;
-}
-
-interface DatabaseErrorLike {
-  code?: string;
 }
 
 const MAX_ROOM_SLUG_LENGTH = 80;
@@ -39,143 +35,55 @@ const MAX_SLUG_ATTEMPTS = 10_000;
 
 @Injectable()
 export class RoomMembershipService {
-  private readonly roomsById = new Map<string, MemoryRoom>();
+  private readonly roomsById = new Map<string, LiveRoomRecord>();
   private readonly roomIdBySlug = new Map<string, string>();
 
-  constructor(private readonly database: DatabaseService) {}
-
   async listRooms(): Promise<RoomSummary[]> {
-    if (!this.database.configured) {
-      return [...this.roomsById.values()]
-        .map((room) => this.toMemorySummary(room))
-        .sort((left, right) => left.title.localeCompare(right.title));
-    }
+    return [...this.roomsById.values()]
+      .map((room) => this.toSummary(room))
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }
 
-    const result = await this.database.query<{
-      id: string;
-      slug: string;
-      title: string;
-      description: string;
-      is_locked: boolean;
-      member_count: string;
-    }>(
-      `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
-              COUNT(member.user_id) FILTER (WHERE member.banned = FALSE)::text AS member_count
-       FROM discussion_room room
-       LEFT JOIN room_member member ON member.room_id = room.id
-       GROUP BY room.id, room.slug, room.title, room.description, room.is_locked
-       ORDER BY room.title ASC`,
-    );
-
-    return result.rows.map((room) => ({
-      id: room.id,
-      slug: room.slug,
-      title: room.title,
-      description: room.description,
-      isLive: true,
-      isLocked: room.is_locked,
-      memberCount: Number(room.member_count),
-    }));
+  async listRoomsForHouse(houseId: string): Promise<RoomSummary[]> {
+    return [...this.roomsById.values()]
+      .filter((room) => room.houseId === houseId)
+      .map((room) => this.toSummary(room))
+      .sort((left, right) => left.title.localeCompare(right.title));
   }
 
   async getRoomSummary(identifier: string): Promise<RoomSummary> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      return this.toMemorySummary(this.getMemoryRoom(roomId));
-    }
-
-    const result = await this.database.query<{
-      id: string;
-      slug: string;
-      title: string;
-      description: string;
-      is_locked: boolean;
-      member_count: string;
-    }>(
-      `SELECT room.id, room.slug, room.title, room.description, room.is_locked,
-              COUNT(member.user_id) FILTER (WHERE member.banned = FALSE)::text AS member_count
-       FROM discussion_room room
-       LEFT JOIN room_member member ON member.room_id = room.id
-       WHERE room.id = $1
-       GROUP BY room.id, room.slug, room.title, room.description, room.is_locked`,
-      [roomId],
-    );
-
-    const room = result.rows[0];
-    if (!room) throw new NotFoundException('Room not found.');
-
-    return {
-      id: room.id,
-      slug: room.slug,
-      title: room.title,
-      description: room.description,
-      isLive: true,
-      isLocked: room.is_locked,
-      memberCount: Number(room.member_count),
-    };
+    return this.toSummary(this.getRoom(roomId));
   }
 
-  async createRoom(baseSlug: string, title: string, owner: AuthenticatedUser): Promise<RoomSummary> {
-    if (!this.database.configured) {
-      const slug = this.allocateMemorySlug(baseSlug);
-      const id = randomUUID();
-      const room: MemoryRoom = {
-        id,
-        slug,
-        title,
-        description: '',
-        isLocked: false,
-        members: new Map([[owner.userId, { role: 'owner', onStage: true }]]),
-        memberNames: new Map([[owner.userId, owner.displayName]]),
-        bannedUsers: new Map(),
-      };
-      this.roomsById.set(id, room);
-      this.roomIdBySlug.set(slug, id);
-      return this.toMemorySummary(room);
-    }
+  async getHouseId(identifier: string): Promise<string | null> {
+    const roomId = await this.resolveRoomId(identifier);
+    return this.getRoom(roomId).houseId;
+  }
 
-    for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
-      const slug = this.slugCandidate(baseSlug, attempt);
-      const id = randomUUID();
+  async createRoom(
+    baseSlug: string,
+    title: string,
+    owner: AuthenticatedUser,
+    houseId: string | null = null,
+  ): Promise<RoomSummary> {
+    const slug = this.allocateSlug(baseSlug);
+    const id = randomUUID();
+    const room: LiveRoomRecord = {
+      id,
+      slug,
+      title,
+      description: '',
+      isLocked: false,
+      houseId,
+      members: new Map([[owner.userId, { role: 'owner', onStage: true }]]),
+      memberNames: new Map([[owner.userId, owner.displayName]]),
+      bannedUsers: new Map(),
+    };
 
-      try {
-        await this.database.transaction(async (client) => {
-          await client.query(
-            `INSERT INTO app_user (id, display_name)
-             VALUES ($1, $2)
-             ON CONFLICT (id) DO UPDATE
-             SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-            [owner.userId, owner.displayName],
-          );
-
-          await client.query(
-            `INSERT INTO discussion_room (id, slug, title, is_live, description, is_locked)
-             VALUES ($1, $2, $3, TRUE, '', FALSE)`,
-            [id, slug, title],
-          );
-          await client.query(
-            `INSERT INTO room_member (room_id, user_id, role, on_stage)
-             VALUES ($1, $2, 'owner', TRUE)`,
-            [id, owner.userId],
-          );
-        });
-        return {
-          id,
-          slug,
-          title,
-          description: '',
-          isLive: true,
-          isLocked: false,
-          memberCount: 1,
-        };
-      } catch (error) {
-        if (this.isUniqueViolation(error)) continue;
-        throw error;
-      }
-    }
-
-    throw new ConflictException('Unable to allocate a unique public room URL.');
+    this.roomsById.set(id, room);
+    this.roomIdBySlug.set(slug, id);
+    return this.toSummary(room);
   }
 
   async updateRoomSettings(
@@ -183,93 +91,42 @@ export class RoomMembershipService {
     request: UpdateRoomSettingsRequest,
   ): Promise<RoomSummary> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      room.title = request.title;
-      room.description = request.description;
-      room.isLocked = request.isLocked;
-      return this.toMemorySummary(room);
-    }
-
-    const result = await this.database.query(
-      `UPDATE discussion_room
-       SET title = $2, description = $3, is_locked = $4
-       WHERE id = $1`,
-      [roomId, request.title, request.description, request.isLocked],
-    );
-    if (result.rowCount === 0) throw new NotFoundException('Room not found.');
-    return this.getRoomSummary(roomId);
+    const room = this.getRoom(roomId);
+    room.title = request.title;
+    room.description = request.description;
+    room.isLocked = request.isLocked;
+    return this.toSummary(room);
   }
 
   async resolveRoomId(identifier: string): Promise<string> {
-    if (!this.database.configured) {
-      if (this.roomsById.has(identifier)) return identifier;
-      const roomId = this.roomIdBySlug.get(identifier);
-      if (!roomId) throw new NotFoundException('Room not found.');
-      return roomId;
-    }
-
-    const result = await this.database.query<{ id: string }>(
-      'SELECT id FROM discussion_room WHERE id = $1 OR slug = $1 LIMIT 1',
-      [identifier],
-    );
-    if (!result.rows[0]) throw new NotFoundException('Room not found.');
-    return result.rows[0].id;
+    if (this.roomsById.has(identifier)) return identifier;
+    const roomId = this.roomIdBySlug.get(identifier);
+    if (!roomId) throw new NotFoundException('Room not found.');
+    return roomId;
   }
 
   async resolveMembership(identifier: string, user: AuthenticatedUser): Promise<RoomMembershipState> {
     const roomId = await this.resolveRoomId(identifier);
-    if (await this.isBanned(roomId, user.userId)) {
+    const room = this.getRoom(roomId);
+
+    if (room.bannedUsers.has(user.userId)) {
       throw new ForbiddenException('You have been banned from this room.');
     }
 
-    const existing = await this.getMembership(roomId, user.userId);
+    const existing = room.members.get(user.userId);
     if (existing) {
-      if (!this.database.configured) {
-        this.getMemoryRoom(roomId).memberNames.set(user.userId, user.displayName);
-      }
-      return existing;
+      room.memberNames.set(user.userId, user.displayName);
+      return { ...existing };
     }
 
-    const room = await this.getRoomSummary(roomId);
     if (room.isLocked) {
       throw new ForbiddenException('This room is locked to new participants.');
     }
 
-    if (!this.database.configured) {
-      const membership: RoomMembershipState = { role: 'listener', onStage: false };
-      const memoryRoom = this.getMemoryRoom(roomId);
-      memoryRoom.members.set(user.userId, membership);
-      memoryRoom.memberNames.set(user.userId, user.displayName);
-      return { ...membership };
-    }
-
-    return this.database.transaction(async (client) => {
-      await client.query(
-        `INSERT INTO app_user (id, display_name)
-         VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE
-         SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-        [user.userId, user.displayName],
-      );
-
-      await client.query(
-        `INSERT INTO room_member (room_id, user_id, role, on_stage)
-         VALUES ($1, $2, 'listener', FALSE)
-         ON CONFLICT (room_id, user_id) DO NOTHING`,
-        [roomId, user.userId],
-      );
-
-      const result = await client.query<{ role: ParticipantRole; on_stage: boolean; banned: boolean }>(
-        'SELECT role, on_stage, banned FROM room_member WHERE room_id = $1 AND user_id = $2',
-        [roomId, user.userId],
-      );
-      const membership = result.rows[0];
-      if (!membership) throw new NotFoundException('Room membership could not be resolved.');
-      if (membership.banned) throw new ForbiddenException('You have been banned from this room.');
-      return { role: membership.role, onStage: membership.on_stage };
-    });
+    const membership: RoomMembershipState = { role: 'listener', onStage: false };
+    room.members.set(user.userId, membership);
+    room.memberNames.set(user.userId, user.displayName);
+    return { ...membership };
   }
 
   async resolveRole(identifier: string, user: AuthenticatedUser): Promise<ParticipantRole> {
@@ -278,20 +135,21 @@ export class RoomMembershipService {
 
   async deleteRoom(identifier: string): Promise<string> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      this.roomIdBySlug.delete(room.slug);
-      this.roomsById.delete(roomId);
-      return roomId;
-    }
-
-    const result = await this.database.query<{ id: string }>(
-      'DELETE FROM discussion_room WHERE id = $1 RETURNING id',
-      [roomId],
-    );
-    if (!result.rows[0]) throw new NotFoundException('Room not found.');
+    const room = this.getRoom(roomId);
+    this.roomIdBySlug.delete(room.slug);
+    this.roomsById.delete(roomId);
     return roomId;
+  }
+
+  pruneMissingRooms(activeLiveKitRoomIds: ReadonlySet<string>): string[] {
+    const removed: string[] = [];
+    for (const room of [...this.roomsById.values()]) {
+      if (activeLiveKitRoomIds.has(room.id)) continue;
+      this.roomIdBySlug.delete(room.slug);
+      this.roomsById.delete(room.id);
+      removed.push(room.id);
+    }
+    return removed;
   }
 
   async getRole(identifier: string, userId: string): Promise<ParticipantRole | null> {
@@ -307,73 +165,29 @@ export class RoomMembershipService {
       throw error;
     }
 
-    if (!this.database.configured) {
-      const membership = this.roomsById.get(roomId)?.members.get(userId);
-      return membership ? { ...membership } : null;
-    }
-
-    const result = await this.database.query<{ role: ParticipantRole; on_stage: boolean }>(
-      'SELECT role, on_stage FROM room_member WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId],
-    );
-    const membership = result.rows[0];
-    return membership ? { role: membership.role, onStage: membership.on_stage } : null;
+    const membership = this.roomsById.get(roomId)?.members.get(userId);
+    return membership ? { ...membership } : null;
   }
 
   async listBannedUsers(identifier: string): Promise<RoomBannedUser[]> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      return [...this.getMemoryRoom(roomId).bannedUsers.entries()]
-        .map(([userId, displayName]) => ({ userId, displayName }))
-        .sort((left, right) => left.displayName.localeCompare(right.displayName));
-    }
-
-    const result = await this.database.query<{ user_id: string; display_name: string }>(
-      `SELECT member.user_id, app_user.display_name
-       FROM room_member member
-       JOIN app_user ON app_user.id = member.user_id
-       WHERE member.room_id = $1 AND member.banned = TRUE
-       ORDER BY app_user.display_name ASC, member.user_id ASC`,
-      [roomId],
-    );
-
-    return result.rows.map((row) => ({
-      userId: row.user_id,
-      displayName: row.display_name,
-    }));
+    return [...this.getRoom(roomId).bannedUsers.entries()]
+      .map(([userId, displayName]) => ({ userId, displayName }))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName));
   }
 
   async isBanned(identifier: string, userId: string): Promise<boolean> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      return this.getMemoryRoom(roomId).bannedUsers.has(userId);
-    }
-
-    const result = await this.database.query<{ banned: boolean }>(
-      'SELECT banned FROM room_member WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId],
-    );
-    return result.rows[0]?.banned ?? false;
+    return this.getRoom(roomId).bannedUsers.has(userId);
   }
 
   async setBanned(identifier: string, userId: string, banned: boolean): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
+    const room = this.getRoom(roomId);
+    if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
 
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
-      if (banned) room.bannedUsers.set(userId, room.memberNames.get(userId) ?? userId);
-      else room.bannedUsers.delete(userId);
-      return;
-    }
-
-    const result = await this.database.query(
-      'UPDATE room_member SET banned = $3 WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId, banned],
-    );
-    if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
+    if (banned) room.bannedUsers.set(userId, room.memberNames.get(userId) ?? userId);
+    else room.bannedUsers.delete(userId);
   }
 
   async setMembershipState(
@@ -382,19 +196,9 @@ export class RoomMembershipService {
     state: RoomMembershipState,
   ): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
-
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
-      room.members.set(userId, { ...state });
-      return;
-    }
-
-    const result = await this.database.query(
-      'UPDATE room_member SET role = $3, on_stage = $4 WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId, state.role, state.onStage],
-    );
-    if (result.rowCount === 0) throw new NotFoundException('Participant is not a room member.');
+    const room = this.getRoom(roomId);
+    if (!room.members.has(userId)) throw new NotFoundException('Participant is not a room member.');
+    room.members.set(userId, { ...state });
   }
 
   async setStagePresence(identifier: string, userId: string, onStage: boolean): Promise<void> {
@@ -419,46 +223,18 @@ export class RoomMembershipService {
     displayName = userId,
   ): Promise<void> {
     const roomId = await this.resolveRoomId(identifier);
-    const defaultOnStage = role !== 'listener';
+    const room = this.getRoom(roomId);
+    const current = room.members.get(userId);
+    room.memberNames.set(userId, displayName);
+    if (current?.role === 'owner') return;
 
-    if (!this.database.configured) {
-      const room = this.getMemoryRoom(roomId);
-      const current = room.members.get(userId);
-      room.memberNames.set(userId, displayName);
-      if (current?.role === 'owner') return;
-      room.members.set(userId, {
-        role,
-        onStage: role === 'listener' ? false : current?.onStage ?? defaultOnStage,
-      });
-      return;
-    }
-
-    await this.database.transaction(async (client) => {
-      await client.query(
-        `INSERT INTO app_user (id, display_name)
-         VALUES ($1, $2)
-         ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-        [userId, displayName],
-      );
-      await client.query(
-        `INSERT INTO room_member (room_id, user_id, role, on_stage)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (room_id, user_id) DO UPDATE
-         SET role = CASE
-               WHEN room_member.role = 'owner' THEN room_member.role
-               ELSE EXCLUDED.role
-             END,
-             on_stage = CASE
-               WHEN room_member.role = 'owner' THEN room_member.on_stage
-               WHEN EXCLUDED.role = 'listener' THEN FALSE
-               ELSE room_member.on_stage
-             END`,
-        [roomId, userId, role, defaultOnStage],
-      );
+    room.members.set(userId, {
+      role,
+      onStage: role === 'listener' ? false : current?.onStage ?? true,
     });
   }
 
-  private allocateMemorySlug(baseSlug: string): string {
+  private allocateSlug(baseSlug: string): string {
     for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt += 1) {
       const candidate = this.slugCandidate(baseSlug, attempt);
       if (!this.roomIdBySlug.has(candidate)) return candidate;
@@ -473,19 +249,13 @@ export class RoomMembershipService {
     return `${baseSlug.slice(0, prefixLength)}${suffix}`;
   }
 
-  private isUniqueViolation(error: unknown): boolean {
-    return typeof error === 'object'
-      && error !== null
-      && (error as DatabaseErrorLike).code === '23505';
-  }
-
-  private getMemoryRoom(roomId: string): MemoryRoom {
+  private getRoom(roomId: string): LiveRoomRecord {
     const room = this.roomsById.get(roomId);
     if (!room) throw new NotFoundException('Room not found.');
     return room;
   }
 
-  private toMemorySummary(room: MemoryRoom): RoomSummary {
+  private toSummary(room: LiveRoomRecord): RoomSummary {
     return {
       id: room.id,
       slug: room.slug,
