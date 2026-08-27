@@ -2,8 +2,6 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  OnModuleDestroy,
-  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -24,11 +22,11 @@ import type {
   UpdateParticipantRoleRequest,
 } from '@live-discussions/contracts';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
-import { RoomCommentsService } from './room-comments.service';
 import {
   liveKitPublishingPermission,
   permissionsForRole,
 } from './room-permissions';
+import { RoomLifecycleService } from './room-lifecycle.service';
 import {
   RoomMembershipService,
   type RoomMembershipState,
@@ -42,36 +40,20 @@ interface LiveRoomMetadata {
 
 const ROOM_EMPTY_BEFORE_FIRST_JOIN_SECONDS = 300;
 const ROOM_DEPARTURE_GRACE_SECONDS = 20;
-const ROOM_RECONCILE_INTERVAL_MS = 5_000;
 
 @Injectable()
-export class RoomsService implements OnModuleInit, OnModuleDestroy {
+export class RoomsService {
   private readonly logger = new Logger(RoomsService.name);
-  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly memberships: RoomMembershipService,
     private readonly moderation: RoomModerationService,
-    private readonly comments: RoomCommentsService,
+    private readonly lifecycle: RoomLifecycleService,
     private readonly config: ConfigService,
   ) {}
 
-  onModuleInit(): void {
-    this.cleanupTimer = setInterval(() => {
-      void this.reconcileLiveRooms().catch((error) => {
-        this.logger.warn(`Unable to reconcile LiveKit rooms: ${this.errorMessage(error)}`);
-      });
-    }, ROOM_RECONCILE_INTERVAL_MS);
-    this.cleanupTimer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
-    this.cleanupTimer = null;
-  }
-
   async listRooms(): Promise<RoomSummary[]> {
-    await this.reconcileLiveRooms();
+    await this.lifecycle.reconcileFinishedRooms();
     return this.memberships.listRooms();
   }
 
@@ -109,7 +91,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createJoinToken(request: JoinRoomRequest, user: AuthenticatedUser): Promise<JoinRoomResponse> {
-    await this.reconcileLiveRooms();
+    await this.lifecycle.reconcileFinishedRooms();
     const { livekitUrl, apiKey, apiSecret } = this.liveKitConfig();
     const summary = await this.memberships.getRoomSummary(request.roomId);
     const membership = await this.memberships.resolveMembership(summary.id, user);
@@ -148,8 +130,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   async closeRoom(request: CloseRoomRequest, actor: AuthenticatedUser): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(request.roomId);
     await this.assertCanModerate(roomId, actor.userId);
-    await this.deleteLiveKitRoomIfPresent(roomId);
-    await this.removeEphemeralRoomState(roomId);
+    await this.lifecycle.deleteRoom(roomId);
   }
 
   async setRaisedHand(request: RaiseHandRequest, user: AuthenticatedUser): Promise<void> {
@@ -428,37 +409,6 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('Only owners and moderators can perform this action.');
     }
     return role;
-  }
-
-  private async reconcileLiveRooms(): Promise<void> {
-    const liveRooms = await this.roomServiceClient().listRooms();
-    const activeRoomIds = new Set(liveRooms.map((room) => room.name));
-    const removedRoomIds = this.memberships.pruneMissingRooms(activeRoomIds);
-
-    for (const roomId of removedRoomIds) {
-      this.comments.clearRoom(roomId);
-      this.moderation.clearRoom(roomId);
-      this.logger.log(`Removed ephemeral state for empty LiveKit room ${roomId}.`);
-    }
-  }
-
-  private async removeEphemeralRoomState(roomId: string): Promise<void> {
-    try {
-      await this.memberships.deleteRoom(roomId);
-    } finally {
-      this.comments.clearRoom(roomId);
-      this.moderation.clearRoom(roomId);
-    }
-  }
-
-  private async deleteLiveKitRoomIfPresent(roomId: string): Promise<void> {
-    const roomService = this.roomServiceClient();
-    try {
-      await roomService.deleteRoom(roomId);
-    } catch (error) {
-      const rooms = await roomService.listRooms([roomId]);
-      if (rooms.length > 0) throw error;
-    }
   }
 
   private async clearFeaturedParticipantIfMatches(
