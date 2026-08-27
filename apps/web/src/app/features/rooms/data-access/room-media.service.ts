@@ -29,6 +29,7 @@ export interface RoomPresenceParticipant {
   onStage: boolean;
   isSpeaking: boolean;
   isLocal: boolean;
+  mutedUntil: number | null;
 }
 
 export interface RoomComment {
@@ -598,6 +599,7 @@ export class RoomMediaService {
   private toPresenceParticipant(participant: Participant, isLocal: boolean): RoomPresenceParticipant {
     const role = this.roleFromMetadata(participant.metadata);
     const onStageAttribute = participant.attributes['onStage'];
+    const mutedUntil = this.mutedUntilFromAttribute(participant.attributes['mutedUntil']);
 
     return {
       identity: participant.identity,
@@ -607,7 +609,14 @@ export class RoomMediaService {
       onStage: onStageAttribute === undefined ? role !== 'listener' : onStageAttribute === 'true',
       isSpeaking: participant.isSpeaking,
       isLocal,
+      mutedUntil,
     };
+  }
+
+  private mutedUntilFromAttribute(value: string | undefined): number | null {
+    if (!value) return null;
+    const timestamp = Number(value);
+    return Number.isFinite(timestamp) && timestamp > Date.now() ? timestamp : null;
   }
 
   private roleFromMetadata(metadata: string | undefined): ParticipantRole {
