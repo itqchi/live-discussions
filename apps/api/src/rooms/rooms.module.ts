@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RoomCommentsService } from './room-comments.service';
+import { RoomLifecycleService } from './room-lifecycle.service';
 import { RoomMembershipService } from './room-membership.service';
 import { RoomModerationService } from './room-moderation.service';
 import { RoomSettingsService } from './room-settings.service';
@@ -9,11 +10,12 @@ import { RoomsService } from './rooms.service';
 @Module({
   controllers: [RoomsController],
   providers: [
-    RoomsService,
     RoomMembershipService,
     RoomCommentsService,
-    RoomSettingsService,
     RoomModerationService,
+    RoomLifecycleService,
+    RoomsService,
+    RoomSettingsService,
   ],
   exports: [
     RoomsService,
@@ -21,6 +23,7 @@ import { RoomsService } from './rooms.service';
     RoomCommentsService,
     RoomSettingsService,
     RoomModerationService,
+    RoomLifecycleService,
   ],
 })
 export class RoomsModule {}
