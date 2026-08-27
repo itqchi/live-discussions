@@ -1,0 +1,42 @@
+services:
+  - type: web
+    runtime: node
+    name: live-discussions-api
+    plan: free
+    region: frankfurt
+    branch: agent/initial-platform
+    autoDeployTrigger: commit
+    buildCommand: npm ci --include=dev && npm run build:api
+    startCommand: npm run start:api:production
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_DRIVER
+        value: memory
+      - key: NX_DAEMON
+        value: "false"
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+
+  - type: web
+    runtime: static
+    name: live-discussions-web
+    branch: agent/initial-platform
+    autoDeployTrigger: commit
+    buildCommand: npm ci --include=dev && npm run build:web:render
+    staticPublishPath: ./dist/apps/web/browser
+    envVars:
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: live-discussions-api
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

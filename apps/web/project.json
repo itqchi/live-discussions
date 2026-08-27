@@ -1,0 +1,47 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/web/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/apps/web",
+        "browser": "apps/web/src/main.ts",
+        "index": "apps/web/src/index.html",
+        "tsConfig": "apps/web/tsconfig.app.json",
+        "polyfills": ["zone.js"],
+        "assets": ["apps/web/src/runtime-config.js"],
+        "styles": ["apps/web/src/styles.css"]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "sourceMap": false,
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "sourceMap": true,
+          "outputHashing": "none"
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/angular:dev-server",
+      "configurations": {
+        "production": {
+          "buildTarget": "web:build:production"
+        },
+        "development": {
+          "buildTarget": "web:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    }
+  }
+}

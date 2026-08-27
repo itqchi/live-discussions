@@ -1,0 +1,531 @@
+<main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+  <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      @if (facade.connected()) {
+        <button class="mb-3 inline-flex text-sm text-slate-400 hover:text-slate-100" type="button" (click)="facade.leave()">← Leave room</button>
+      } @else {
+        <a class="mb-3 inline-flex text-sm text-slate-400 hover:text-slate-100" routerLink="/">← Back to Home</a>
+      }
+      <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
+      <div class="mt-1 flex flex-wrap items-center gap-3">
+        <h1 class="min-w-0 text-3xl font-bold tracking-tight md:text-5xl">{{ facade.roomTitle() || roomId() }}</h1>
+        @if (facade.roomLocked()) {
+          <span class="rounded-full border border-amber-500/60 bg-amber-950/30 px-2.5 py-1 text-xs font-semibold text-amber-200">🔒 Locked</span>
+        }
+      </div>
+      @if (facade.roomDescription()) {
+        <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-300">{{ facade.roomDescription() }}</p>
+      }
+      <p class="mt-2 text-xs text-slate-500">/room/{{ facade.roomSlug() || roomId() }}</p>
+    </div>
+
+    <span
+      class="w-fit rounded-full border px-3 py-2 text-sm"
+      role="status"
+      aria-live="polite"
+      [class.border-emerald-500]="facade.connectionStatus() === 'connected'"
+      [class.text-emerald-100]="facade.connectionStatus() === 'connected'"
+      [class.border-amber-500]="facade.joining() || facade.connectionStatus() === 'connecting' || facade.connectionStatus() === 'reconnecting'"
+      [class.text-amber-200]="facade.joining() || facade.connectionStatus() === 'connecting' || facade.connectionStatus() === 'reconnecting'"
+      [class.border-slate-600]="!facade.joining() && facade.connectionStatus() === 'disconnected'"
+      [class.text-slate-400]="!facade.joining() && facade.connectionStatus() === 'disconnected'"
+    >
+      {{ facade.joining() || facade.connectionStatus() === 'connecting' ? 'Joining…' : facade.connectionStatus() === 'reconnecting' ? 'Reconnecting…' : facade.connectionStatus() === 'connected' ? 'Connected' : 'Not connected' }}
+    </span>
+  </header>
+
+  @if (facade.error()) {
+    <div class="mb-5 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200" role="alert">
+      {{ facade.error() }}
+    </div>
+  }
+
+  @if (!displayName() && !facade.connected()) {
+    <section class="mb-5 max-w-xl rounded-3xl border border-indigo-500/40 bg-indigo-950/20 p-5">
+      <p class="text-xs font-bold tracking-[0.2em] text-indigo-300">JOIN THIS ROOM</p>
+      <h2 class="mt-2 text-xl font-semibold">Choose your display name</h2>
+      <p class="mt-1 text-sm text-slate-400">You can join this shared room link directly without going back to Home.</p>
+      @if (facade.roomLocked()) {
+        <p class="mt-2 rounded-xl border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">This room is locked. Existing room members can reconnect, but new participants cannot join until a moderator unlocks it.</p>
+      }
+      <form class="mt-4 flex flex-col gap-3 sm:flex-row" [formGroup]="joinForm" (ngSubmit)="join()">
+        <div class="min-w-0 flex-1">
+          <input
+            class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            type="text"
+            formControlName="displayName"
+            maxlength="80"
+            autocomplete="name"
+            placeholder="Display name"
+          />
+          @if (joinForm.controls.displayName.touched && joinForm.controls.displayName.invalid) {
+            <p class="mt-1 text-xs text-red-300">Enter a display name up to 80 characters.</p>
+          }
+        </div>
+        <button class="rounded-xl bg-indigo-500 px-5 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" type="submit" [disabled]="joinForm.invalid || facade.joining()">
+          {{ facade.joining() ? 'Joining…' : 'Join room' }}
+        </button>
+      </form>
+    </section>
+  }
+
+  <section class="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
+    <aside class="flex max-h-[760px] min-h-[620px] flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/80 backdrop-blur">
+      <div class="border-b border-slate-800 p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs font-bold tracking-[0.2em] text-slate-400">ROOM</p>
+            <h2 class="mt-1 truncate text-xl font-semibold">{{ facade.roomTitle() || roomId() }}</h2>
+            @if (facade.roomLocked()) {
+              <p class="mt-1 text-xs font-semibold text-amber-300">🔒 New joins locked</p>
+            }
+          </div>
+          <button
+            class="shrink-0 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-slate-500 hover:text-white"
+            type="button"
+            (click)="openSettings()"
+            aria-haspopup="dialog"
+          >
+            ⚙ Settings
+          </button>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
+          <span>{{ displayName() || 'No display name' }}</span>
+          @if (facade.connected()) {
+            <span>·</span>
+            <span class="capitalize">{{ facade.roleLabel() }}</span>
+          }
+        </div>
+      </div>
+
+      <div class="flex-1 space-y-3 overflow-y-auto p-4">
+        @if (facade.pinnedComments().length > 0) {
+          <section class="rounded-2xl border border-amber-500/50 bg-amber-950/20 p-3">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <p class="text-[11px] font-bold tracking-[0.16em] text-amber-300">📌 PINNED</p>
+              <span class="text-[11px] text-amber-200/60">{{ facade.pinnedComments().length }}</span>
+            </div>
+            <div class="space-y-2">
+              @for (comment of facade.pinnedComments(); track comment.id) {
+                <article class="rounded-xl border border-amber-800/70 bg-slate-950/70 p-3">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="truncate text-xs font-semibold text-amber-100">{{ comment.participantName }}</p>
+                      <p class="mt-1 break-words text-sm text-slate-100">{{ comment.text }}</p>
+                    </div>
+                    @if (facade.canModerate()) {
+                      <button class="shrink-0 text-[11px] font-semibold text-amber-300 hover:text-amber-100" type="button" (click)="facade.toggleCommentPinned(comment.id)">Unpin</button>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+        @if (facade.comments().length === 0) {
+          <div class="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
+            Comments appear here in realtime.
+          </div>
+        }
+
+        @for (comment of facade.comments(); track comment.id) {
+          <article class="rounded-2xl border bg-slate-950/50 p-3" [class.border-amber-600]="facade.isCommentPinned(comment.id)" [class.border-slate-800]="!facade.isCommentPinned(comment.id)">
+            @if (comment.replyToId && facade.commentById(comment.replyToId); as parent) {
+              <div class="mb-2 rounded-lg border-l-2 border-indigo-500 bg-slate-900/80 px-2 py-1 text-xs text-slate-400">
+                Replying to <span class="font-semibold text-slate-300">{{ parent.participantName }}</span> · {{ parent.text }}
+              </div>
+            }
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="truncate text-xs font-semibold text-slate-300">
+                  {{ comment.participantName }}
+                  @if (facade.isCommentPinned(comment.id)) { <span class="ml-1 text-amber-300">📌</span> }
+                </p>
+                <p class="mt-1 break-words text-sm text-slate-100">{{ comment.text }}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                @if (facade.canModerate()) {
+                  <button class="text-xs text-amber-400 hover:text-amber-200" type="button" (click)="facade.toggleCommentPinned(comment.id)">{{ facade.isCommentPinned(comment.id) ? 'Unpin' : 'Pin' }}</button>
+                }
+                <button class="text-xs text-slate-500 hover:text-slate-200" type="button" (click)="replyTo(comment.id)">Reply</button>
+              </div>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-1">
+              @for (reaction of reactionEntries(comment); track reaction.emoji) {
+                <button
+                  class="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-xs hover:border-slate-500"
+                  type="button"
+                  (click)="facade.toggleCommentReaction(comment.id, reaction.emoji)"
+                  [attr.aria-label]="'React ' + reaction.emoji + ' to comment'"
+                >
+                  {{ reaction.emoji }} {{ reaction.count }}
+                </button>
+              }
+              <details liveDiscussionsDismissibleDetails class="relative">
+                <summary class="cursor-pointer list-none rounded-full border border-slate-800 px-2 py-1 text-xs text-slate-500 hover:text-slate-200">＋</summary>
+                <div class="absolute left-0 top-8 z-20 flex gap-1 rounded-xl border border-slate-700 bg-slate-950 p-2 shadow-xl">
+                  @for (emoji of availableReactions; track emoji) {
+                    <button type="button" class="rounded-lg p-1 hover:bg-slate-800" (click)="facade.toggleCommentReaction(comment.id, emoji)" [attr.aria-label]="'React ' + emoji + ' to comment'">{{ emoji }}</button>
+                  }
+                </div>
+              </details>
+            </div>
+          </article>
+        }
+      </div>
+
+      <form class="border-t border-slate-800 p-4" [formGroup]="commentForm" (ngSubmit)="sendComment()">
+        @if (replyingToId() && facade.commentById(replyingToId()); as parent) {
+          <div class="mb-2 flex items-center justify-between gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs text-slate-300">
+            <span class="truncate">Replying to {{ parent.participantName }}</span>
+            <button type="button" class="text-slate-400 hover:text-white" (click)="cancelReply()">×</button>
+          </div>
+        }
+        <textarea
+          class="min-h-20 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+          formControlName="comment"
+          placeholder="Add a comment"
+          maxlength="1000"
+        ></textarea>
+        <button
+          class="mt-2 w-full rounded-xl bg-indigo-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          [disabled]="commentForm.invalid || !facade.connected() || facade.sendingComment()"
+        >
+          {{ facade.sendingComment() ? 'Sending…' : 'Send comment' }}
+        </button>
+      </form>
+    </aside>
+
+    <section class="min-h-[620px] rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
+      <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold tracking-[0.2em] text-slate-400">STAGE</p>
+          <p class="mt-1 text-sm text-slate-500">Screen share → camera → avatar</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          @for (emoji of availableReactions; track emoji) {
+            <button class="rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2 text-lg hover:border-slate-500" type="button" (click)="facade.sendStageReaction(emoji)" [disabled]="!facade.connected()" [attr.aria-label]="'Send ' + emoji + ' reaction'">{{ emoji }}</button>
+          }
+        </div>
+      </div>
+
+      @if (facade.featuredParticipant(); as participant) {
+        <article class="speaker-surface relative mb-5 overflow-hidden rounded-3xl border border-indigo-500/60 bg-slate-950" [class.is-speaking]="participant.isSpeaking">
+          @if (facade.featuredVisualTrack(); as tile) {
+            <live-discussions-video-track [track]="tile.track" [mirrored]="tile.isLocal && tile.source === 'camera'" />
+          } @else {
+            <div class="relative min-h-[340px] bg-gradient-to-br from-indigo-950 to-slate-950">
+              <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div class="speaker-avatar featured-avatar flex items-center justify-center rounded-full bg-indigo-500 text-5xl font-bold text-white" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
+              </div>
+            </div>
+          }
+          <div class="absolute bottom-4 left-4 rounded-xl bg-black/70 px-3 py-2 text-sm backdrop-blur">
+            <span class="font-semibold">{{ participant.name }}</span>
+            <span class="ml-2 capitalize text-slate-300">{{ participant.role }}</span>
+            @if (participant.isSpeaking) { <span class="ml-2 font-semibold text-emerald-300">Speaking</span> }
+            @if (participant.mutedUntil) { <span class="ml-2 font-semibold text-amber-300">🔇 Mic locked {{ muteRemainingLabel(participant.mutedUntil) }}</span> }
+            @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-2 text-xl">{{ emoji }}</span> }
+          </div>
+        </article>
+      } @else {
+        <div class="mb-5 flex min-h-[340px] items-center justify-center rounded-3xl border border-dashed border-slate-700 bg-slate-950/40 text-slate-500">
+          No one is on stage yet.
+        </div>
+      }
+
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        @for (participant of facade.secondaryStageParticipants(); track participant.identity) {
+          <article class="speaker-surface relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-950" [class.is-speaking]="participant.isSpeaking">
+            @if (facade.visualTrackFor(participant.identity); as tile) {
+              <live-discussions-video-track [track]="tile.track" [mirrored]="tile.isLocal && tile.source === 'camera'" />
+            } @else {
+              <div class="flex min-h-44 items-center justify-center">
+                <div class="text-center">
+                  <div class="speaker-avatar mx-auto flex size-16 items-center justify-center rounded-full bg-slate-700 text-lg font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
+                  <p class="mt-2 text-sm font-semibold">{{ participant.name }}</p>
+                </div>
+              </div>
+            }
+            <div class="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-1 text-xs">
+              {{ participant.name }}
+              @if (participant.isSpeaking) { <span class="ml-1 font-semibold text-emerald-300">Speaking</span> }
+              @if (participant.mutedUntil) { <span class="ml-1 font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }
+              @if (facade.stageReactionFor(participant.identity); as emoji) { <span class="ml-1 text-base">{{ emoji }}</span> }
+            </div>
+          </article>
+        }
+      </div>
+
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleMicrophone()" [disabled]="!facade.connected() || !facade.canPublishAudio() || facade.microphoneLocked()">{{ facade.microphoneLocked() ? 'Mic locked' : facade.microphoneEnabled() ? 'Mute' : 'Mic' }}</button>
+        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleCamera()" [disabled]="!facade.connected() || !facade.canPublishVideo()">{{ facade.cameraEnabled() ? 'Stop camera' : 'Camera' }}</button>
+        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleScreenShare()" [disabled]="!facade.connected() || !facade.canShareScreen()">{{ facade.screenSharing() ? 'Stop sharing' : 'Share screen' }}</button>
+        <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.toggleRaisedHand()" [disabled]="!facade.connected()">{{ facade.raisedHand() ? 'Lower hand' : 'Raise hand' }}</button>
+        @if (facade.currentRole() !== 'listener') {
+          <button class="rounded-xl border border-slate-700 px-3 py-2 text-sm disabled:opacity-40" type="button" (click)="facade.setSelfOnStage(!facade.isLocalOnStage())" [disabled]="!facade.connected()">{{ facade.isLocalOnStage() ? 'Move to audience' : 'Join stage' }}</button>
+        }
+        @if (facade.audioPlaybackBlocked()) {
+          <button class="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950" type="button" (click)="facade.resumeAudio()">Start audio</button>
+        }
+        @if (facade.microphoneLocked()) {
+          <span class="rounded-xl border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200">🔒 Microphone locked for {{ muteRemainingLabel(facade.localMutedUntil()) }}</span>
+        }
+      </div>
+    </section>
+
+    <aside class="max-h-[760px] min-h-[620px] overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900/80 p-5 backdrop-blur">
+      <div class="mb-4">
+        <p class="text-xs font-bold tracking-[0.2em] text-slate-400">PEOPLE</p>
+        <p class="mt-1 text-sm text-slate-500">
+          {{ facade.participants().length }} connected
+          @if (raisedHands().length > 0) {
+            · <span class="font-semibold text-amber-300">{{ raisedHands().length }} raised</span>
+          }
+        </p>
+      </div>
+
+      @for (participant of facade.stageParticipants(); track participant.identity) {
+        <div class="mb-2 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+          <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Stage @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.raisedHand) { · ✋ } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }</p>
+          </div>
+          @if (facade.canModerate() && !participant.isLocal) {
+            <details liveDiscussionsDismissibleDetails class="relative">
+              <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
+              <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                @if (facade.featuredParticipantId() === participant.identity) {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                } @else {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
+                @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                  <div class="mt-1 border-y border-slate-800 py-1">
+                    <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                    <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                      @for (duration of muteDurations; track duration.seconds) {
+                        <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                      }
+                    </div>
+                  </div>
+                }
+                @if (participant.role !== 'moderator') {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.moveToAudience(participant.identity)">Move to audience</button>
+                  <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
+                  <button class="w-full rounded-lg px-3 py-2 text-left font-semibold text-red-200 hover:bg-red-950/60 disabled:opacity-40" type="button" (click)="facade.banParticipant(participant.identity)" [disabled]="facade.updatingBanUserId() === participant.identity">{{ facade.updatingBanUserId() === participant.identity ? 'Banning…' : 'Ban from room' }}</button>
+                }
+              </div>
+            </details>
+          }
+        </div>
+      }
+
+      @if (raisedHands().length > 0) {
+        <p class="mb-2 mt-5 text-xs font-bold tracking-[0.16em] text-amber-300">RAISED HANDS</p>
+        @for (participant of raisedHands(); track participant.identity) {
+          <div class="mb-2 flex items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-950/15 p-3">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-900/70 font-bold text-amber-100">{{ initialsFor(participant.name) }}</div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
+              <p class="text-xs capitalize text-amber-200/80">{{ participant.role }} · ✋ Waiting to speak @if (participant.mutedUntil) { · 🔇 {{ muteRemainingLabel(participant.mutedUntil) }} }</p>
+            </div>
+
+            @if (facade.canModerate() && !participant.isLocal && participant.role !== 'moderator' && participant.role !== 'owner') {
+              <button class="shrink-0 rounded-lg bg-amber-200 px-2.5 py-2 text-xs font-semibold text-slate-950" type="button" (click)="facade.promoteToSpeaker(participant.identity)">Invite</button>
+            }
+
+            @if (facade.canModerate() && !participant.isLocal) {
+              <details liveDiscussionsDismissibleDetails class="relative shrink-0">
+                <summary class="cursor-pointer list-none px-1 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
+                <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                  @if (facade.featuredParticipantId() === participant.identity) {
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                  } @else {
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                  }
+                  @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                    <div class="mt-1 border-y border-slate-800 py-1">
+                      <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                      <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                      <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                        @for (duration of muteDurations; track duration.seconds) {
+                          <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                  @if (participant.role !== 'moderator' && participant.role !== 'owner') {
+                    <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
+                    <button class="w-full rounded-lg px-3 py-2 text-left font-semibold text-red-200 hover:bg-red-950/60 disabled:opacity-40" type="button" (click)="facade.banParticipant(participant.identity)" [disabled]="facade.updatingBanUserId() === participant.identity">{{ facade.updatingBanUserId() === participant.identity ? 'Banning…' : 'Ban from room' }}</button>
+                  }
+                </div>
+              </details>
+            }
+          </div>
+        }
+      }
+
+      @if (audienceWithoutRaisedHands().length > 0) {
+        <p class="mb-2 mt-5 text-xs font-bold tracking-[0.16em] text-slate-500">AUDIENCE</p>
+      }
+      @for (participant of audienceWithoutRaisedHands(); track participant.identity) {
+        <div class="mb-2 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+          <div class="speaker-avatar flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold" [class.is-speaking]="participant.isSpeaking">{{ initialsFor(participant.name) }}</div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold">{{ participant.name }} @if (participant.isLocal) { <span class="text-slate-500">(you)</span> }</p>
+            <p class="text-xs capitalize text-slate-500">{{ participant.role }} · Audience @if (participant.isSpeaking) { · <span class="font-semibold text-emerald-300">Speaking</span> } @if (participant.mutedUntil) { · <span class="font-semibold text-amber-300">🔇 {{ muteRemainingLabel(participant.mutedUntil) }}</span> }</p>
+          </div>
+          @if (facade.canModerate() && !participant.isLocal) {
+            <details liveDiscussionsDismissibleDetails class="relative">
+              <summary class="cursor-pointer list-none px-2 text-xl text-slate-400" aria-label="Participant actions">⋯</summary>
+              <div class="absolute right-0 top-8 z-30 w-56 rounded-xl border border-slate-700 bg-slate-950 p-1 text-sm shadow-xl">
+                @if (facade.featuredParticipantId() === participant.identity) {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.returnOwnerToFeaturedSpot()">Return owner to featured spot</button>
+                } @else {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.featureParticipant(participant.identity)">Feature on stage</button>
+                }
+                @if (canMuteParticipant(participant.role, participant.isLocal)) {
+                  <div class="mt-1 border-y border-slate-800 py-1">
+                    <p class="px-3 py-1 text-[10px] font-bold tracking-[0.14em] text-slate-500">MICROPHONE</p>
+                    <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity)" [disabled]="facade.mutingParticipantId() === participant.identity">Mute now</button>
+                    <div class="grid grid-cols-2 gap-1 px-2 pb-1">
+                      @for (duration of muteDurations; track duration.seconds) {
+                        <button class="rounded-lg border border-slate-800 px-2 py-1.5 text-xs hover:bg-amber-950/40 disabled:opacity-40" type="button" (click)="facade.muteParticipant(participant.identity, duration.seconds)" [disabled]="facade.mutingParticipantId() === participant.identity">Lock {{ duration.label }}</button>
+                      }
+                    </div>
+                  </div>
+                }
+                @if (participant.role !== 'moderator') {
+                  <button class="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-800" type="button" (click)="facade.promoteToSpeaker(participant.identity)">Invite to speak</button>
+                  <button class="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-slate-800" type="button" (click)="facade.removeParticipant(participant.identity)">Remove</button>
+                  <button class="w-full rounded-lg px-3 py-2 text-left font-semibold text-red-200 hover:bg-red-950/60 disabled:opacity-40" type="button" (click)="facade.banParticipant(participant.identity)" [disabled]="facade.updatingBanUserId() === participant.identity">{{ facade.updatingBanUserId() === participant.identity ? 'Banning…' : 'Ban from room' }}</button>
+                }
+              </div>
+            </details>
+          }
+        </div>
+      }
+    </aside>
+  </section>
+
+  @if (settingsOpen()) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="presentation" (click)="closeTransientUi()">
+      <section class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="room-settings-title" (click)="$event.stopPropagation()">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold tracking-[0.2em] text-slate-500">ROOM SETTINGS</p>
+            <h2 id="room-settings-title" class="mt-1 text-2xl font-bold">{{ facade.roomTitle() || roomId() }}</h2>
+          </div>
+          <button class="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-white" type="button" (click)="closeTransientUi()" aria-label="Close room settings">×</button>
+        </div>
+
+        @if (facade.canEditRoomSettings()) {
+          <form class="mt-6 space-y-4" [formGroup]="settingsForm" (ngSubmit)="saveSettings()">
+            <label class="block">
+              <span class="text-sm font-semibold text-slate-200">Room title</span>
+              <input class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-indigo-500" type="text" formControlName="title" maxlength="100" />
+              @if (settingsForm.controls.title.touched && settingsForm.controls.title.invalid) {
+                <span class="mt-1 block text-xs text-red-300">Enter a title up to 100 characters.</span>
+              }
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-semibold text-slate-200">Description</span>
+              <textarea class="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-indigo-500" formControlName="description" maxlength="500" placeholder="What is this room about?"></textarea>
+              <span class="mt-1 block text-xs text-slate-500">{{ settingsForm.controls.description.value.length }}/500</span>
+            </label>
+
+            <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+              <input class="mt-1 size-4" type="checkbox" formControlName="isLocked" />
+              <span>
+                <span class="block font-semibold text-slate-200">Lock room to new participants</span>
+                <span class="mt-1 block text-xs leading-5 text-slate-500">Existing room members can still reconnect. People who have never joined this room are blocked until it is unlocked.</span>
+              </span>
+            </label>
+
+            <button class="w-full rounded-xl bg-indigo-500 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" type="submit" [disabled]="settingsForm.invalid || facade.savingSettings()">
+              {{ facade.savingSettings() ? 'Saving…' : 'Save room settings' }}
+            </button>
+            @if (settingsSaved()) {
+              <p class="text-center text-xs text-emerald-300" role="status">Room settings saved. The public link stayed the same.</p>
+            }
+          </form>
+        } @else {
+          <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm">
+            <p class="font-semibold text-slate-200">Room profile</p>
+            <p class="mt-2 whitespace-pre-wrap text-slate-400">{{ facade.roomDescription() || 'No description has been added.' }}</p>
+            <p class="mt-3 text-xs" [class.text-amber-300]="facade.roomLocked()" [class.text-emerald-300]="!facade.roomLocked()">
+              {{ facade.roomLocked() ? '🔒 New participants are currently blocked.' : 'Open to new participants.' }}
+            </p>
+          </div>
+        }
+
+        <div class="mt-6 space-y-3 text-sm text-slate-300">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <p class="font-semibold">Your role</p>
+            <p class="mt-1 capitalize text-slate-500">{{ facade.roleLabel() }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-semibold">Public room link</p>
+                <p class="mt-1 break-all text-slate-500">/room/{{ facade.roomSlug() || roomId() }}</p>
+                <p class="mt-1 text-xs text-slate-600">Changing the title does not change this URL.</p>
+              </div>
+              <button class="shrink-0 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold hover:border-slate-500" type="button" (click)="copyOrShareRoomLink()">Copy link</button>
+            </div>
+            @if (roomLinkActionStatus() === 'copied') {
+              <p class="mt-2 text-xs text-emerald-300" role="status">Room link copied.</p>
+            } @else if (roomLinkActionStatus() === 'shared') {
+              <p class="mt-2 text-xs text-emerald-300" role="status">Room link shared.</p>
+            } @else if (roomLinkActionStatus() === 'error') {
+              <p class="mt-2 text-xs text-amber-300" role="status">This browser could not copy or share the link.</p>
+            }
+          </div>
+        </div>
+
+        @if (facade.canModerate()) {
+          <section class="mt-6 overflow-hidden rounded-2xl border border-red-900/60 bg-red-950/10">
+            <div class="border-b border-red-900/40 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="font-semibold text-red-100">Banned participants</p>
+                  <p class="mt-1 text-xs leading-5 text-slate-500">Banned users cannot receive a new room token until you unban them. House admins cannot be banned from one House room.</p>
+                </div>
+                <span class="rounded-full bg-red-950 px-2 py-1 text-xs font-semibold text-red-200">{{ facade.bannedUsers().length }}</span>
+              </div>
+            </div>
+            <div class="max-h-48 overflow-y-auto p-3">
+              @if (facade.loadingBans()) {
+                <p class="px-2 py-3 text-sm text-slate-500">Loading banned participants…</p>
+              } @else {
+                @for (user of facade.bannedUsers(); track user.userId) {
+                  <div class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-red-950/20">
+                    <div class="grid size-9 shrink-0 place-items-center rounded-full bg-red-950 text-xs font-bold text-red-200">{{ initialsFor(user.displayName) }}</div>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-semibold text-slate-200">{{ user.displayName }}</p>
+                    </div>
+                    <button class="rounded-lg border border-red-900 px-2.5 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-950 disabled:opacity-40" type="button" (click)="facade.unbanParticipant(user.userId)" [disabled]="facade.updatingBanUserId() === user.userId">{{ facade.updatingBanUserId() === user.userId ? 'Unbanning…' : 'Unban' }}</button>
+                  </div>
+                } @empty {
+                  <p class="px-2 py-3 text-sm text-slate-500">No one is banned from this room.</p>
+                }
+              }
+            </div>
+          </section>
+        }
+
+        @if (facade.canCloseRoom()) {
+          <button class="mt-6 w-full rounded-xl bg-red-600 px-4 py-3 font-semibold text-white disabled:opacity-50" type="button" (click)="closeRoom()" [disabled]="facade.closingRoom()">
+            {{ facade.closingRoom() ? 'Closing…' : 'Close room for everyone' }}
+          </button>
+        }
+      </section>
+    </div>
+  }
+</main>

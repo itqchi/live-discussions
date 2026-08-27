@@ -1,0 +1,295 @@
+<main class="mx-auto max-w-7xl px-6 py-10">
+  <button class="mb-6 text-sm text-slate-400 hover:text-slate-200" type="button" (click)="facade.goHome()">
+    ← Back to Home
+  </button>
+
+  @if (facade.loading()) {
+    <div class="rounded-3xl border border-slate-700 bg-slate-900/70 p-8 text-slate-400">Loading House…</div>
+  } @else if (facade.house(); as house) {
+    <header class="mb-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] text-violet-300">HOUSE</p>
+        <h1 class="mt-2 text-4xl font-bold tracking-tight md:text-6xl">{{ house.name }}</h1>
+        <p class="mt-4 max-w-2xl text-slate-300">{{ house.description || 'A community on Live Discussions.' }}</p>
+        <div class="mt-4 flex flex-wrap gap-3 text-sm text-slate-400">
+          <span>{{ house.memberCount }} members</span>
+          <span>•</span>
+          <span>{{ house.roomCount }} rooms</span>
+          @if (facade.role()) {
+            <span>•</span>
+            <span class="capitalize text-violet-200">{{ facade.role() }}</span>
+          }
+        </div>
+      </div>
+
+      <form class="grid gap-2" [formGroup]="identityForm" (ngSubmit)="saveDisplayName()">
+        <label class="text-sm text-slate-300" for="house-display-name">Your display name</label>
+        <div class="flex gap-2">
+          <input
+            id="house-display-name"
+            class="min-w-56 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="displayName"
+            placeholder="Your name"
+          />
+          <button class="rounded-xl border border-slate-600 px-4 font-semibold" type="submit">Save</button>
+        </div>
+      </form>
+    </header>
+
+    @if (facade.error()) {
+      <div class="mb-6 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+        {{ facade.error() }}
+      </div>
+    }
+
+    @if (!facade.role()) {
+      <section class="mb-8 flex flex-col gap-4 rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-xl font-semibold">Join this House</h2>
+          <p class="mt-1 text-sm text-slate-400">Become a member and keep this community in your spaces.</p>
+        </div>
+        <button
+          class="rounded-xl bg-violet-200 px-5 py-3 font-semibold text-slate-950 disabled:opacity-40"
+          type="button"
+          (click)="joinHouse()"
+          [disabled]="facade.joining()"
+        >
+          {{ facade.joining() ? 'Joining…' : 'Join House' }}
+        </button>
+      </section>
+    }
+
+    <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <section>
+        <div class="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">DISCUSSIONS</p>
+            <h2 class="mt-1 text-2xl font-semibold">Rooms in this House</h2>
+          </div>
+          <span class="text-sm text-slate-400">{{ house.rooms.length }} rooms</span>
+        </div>
+
+        @if (house.rooms.length) {
+          <div class="grid gap-4 md:grid-cols-2">
+            @for (room of house.rooms; track room.id) {
+              <article class="flex min-h-48 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+                <div>
+                  <div class="mb-4 flex items-center justify-between gap-3">
+                    <div class="flex flex-wrap gap-2">
+                      <span
+                        class="rounded-full px-3 py-1 text-xs font-bold"
+                        [class.bg-emerald-950]="room.isLive"
+                        [class.text-emerald-200]="room.isLive"
+                        [class.bg-slate-800]="!room.isLive"
+                        [class.text-slate-400]="!room.isLive"
+                      >
+                        {{ room.isLive ? 'LIVE' : 'CLOSED' }}
+                      </span>
+                      @if (room.isLive && room.isLocked) {
+                        <span class="rounded-full bg-amber-950 px-3 py-1 text-xs font-bold text-amber-200">🔒 LOCKED</span>
+                      }
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+                      @if (facade.canManageRooms() && room.isLive) {
+                        <details class="relative" liveDiscussionsDismissibleDetails>
+                          <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
+                          <div class="absolute right-0 top-9 z-30 w-44 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                            <button
+                              class="w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/60 disabled:opacity-40"
+                              type="button"
+                              (click)="facade.closeRoom(room.id)"
+                              [disabled]="facade.closingRoomId() === room.id"
+                            >
+                              {{ facade.closingRoomId() === room.id ? 'Closing…' : 'Close room' }}
+                            </button>
+                          </div>
+                        </details>
+                      }
+                    </div>
+                  </div>
+                  <h3 class="text-xl font-semibold">{{ room.title }}</h3>
+                  @if (room.description) {
+                    <p class="mt-2 line-clamp-3 text-sm leading-6 text-slate-400">{{ room.description }}</p>
+                  }
+                  @if (room.isLocked) {
+                    <p class="mt-3 text-xs text-amber-300">New participants are blocked; existing room members can reconnect.</p>
+                  }
+                </div>
+
+                <button
+                  class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                  type="button"
+                  (click)="joinRoom(room.id)"
+                  [disabled]="!room.isLive"
+                >
+                  {{ room.isLive ? (room.isLocked ? 'Open discussion' : 'Join discussion') : 'Room closed' }}
+                </button>
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+            <h3 class="text-xl font-semibold">No rooms yet</h3>
+            <p class="mt-2 text-slate-400">The House owner or an admin can start the first discussion.</p>
+          </div>
+        }
+      </section>
+
+      <aside class="grid content-start gap-5">
+        @if (facade.canManageRooms()) {
+          <form class="rounded-3xl border border-sky-800/70 bg-sky-950/20 p-6" [formGroup]="roomForm" (ngSubmit)="createRoom()">
+            <p class="text-xs font-bold tracking-[0.2em] text-sky-300">HOUSE MANAGEMENT</p>
+            <h2 class="mt-2 text-xl font-semibold">Start a room here</h2>
+            <p class="mt-2 text-sm text-slate-400">House owners and admins can set the topic and access mode before going live.</p>
+
+            <div class="mt-6 grid gap-4">
+              <label class="grid gap-2 text-sm text-slate-300">
+                Room title
+                <input
+                  class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+                  formControlName="title"
+                  maxlength="100"
+                  placeholder="What should we talk about?"
+                />
+              </label>
+
+              <label class="grid gap-2 text-sm text-slate-300">
+                Topic / description
+                <textarea
+                  class="min-h-24 resize-y rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+                  formControlName="description"
+                  maxlength="500"
+                  placeholder="Give House members some context before they join."
+                ></textarea>
+                <span class="text-xs text-slate-500">{{ roomForm.controls.description.value.length }}/500</span>
+              </label>
+
+              <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+                <input class="mt-1 size-4" type="checkbox" formControlName="isLocked" />
+                <span>
+                  <span class="block text-sm font-semibold text-slate-200">Start locked</span>
+                  <span class="mt-1 block text-xs leading-5 text-slate-500">Existing room members can reconnect; new participants wait until a moderator unlocks it.</span>
+                </span>
+              </label>
+            </div>
+
+            <button
+              class="mt-5 w-full rounded-xl bg-sky-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+              type="submit"
+              [disabled]="roomForm.invalid || facade.creatingRoom()"
+            >
+              {{ facade.creatingRoom() ? 'Creating…' : 'Create & enter room' }}
+            </button>
+          </form>
+        }
+
+        @if (facade.canEditHouse()) {
+          <form class="rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6" [formGroup]="houseForm" (ngSubmit)="saveHouseSettings()">
+            <p class="text-xs font-bold tracking-[0.2em] text-violet-300">HOUSE SETTINGS</p>
+            <h2 class="mt-2 text-xl font-semibold">House profile</h2>
+            <p class="mt-2 text-sm text-slate-400">Only the House owner can change its public name and description.</p>
+
+            <label class="mt-6 grid gap-2 text-sm text-slate-300">
+              House name
+              <input
+                class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-violet-500"
+                formControlName="name"
+                maxlength="80"
+              />
+            </label>
+
+            <label class="mt-4 grid gap-2 text-sm text-slate-300">
+              Description
+              <textarea
+                class="min-h-28 resize-y rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-violet-500"
+                formControlName="description"
+                maxlength="240"
+                placeholder="What is this House about?"
+              ></textarea>
+            </label>
+
+            <button
+              class="mt-5 w-full rounded-xl bg-violet-200 px-4 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+              type="submit"
+              [disabled]="houseForm.invalid || !houseForm.dirty || facade.updatingHouse()"
+            >
+              {{ facade.updatingHouse() ? 'Saving…' : 'Save House settings' }}
+            </button>
+          </form>
+        }
+
+        <section class="overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/80">
+          <div class="border-b border-slate-800 p-5">
+            <p class="text-xs font-bold tracking-[0.2em] text-violet-300">MEMBERS</p>
+            <div class="mt-1 flex items-center justify-between gap-3">
+              <h2 class="text-xl font-semibold">House members</h2>
+              <span class="text-xs text-slate-500">{{ house.members.length }}</span>
+            </div>
+            @if (facade.canManageMembers()) {
+              <p class="mt-2 text-xs leading-5 text-slate-500">Admins can moderate rooms in this House. Only the House owner can change admin roles.</p>
+            }
+          </div>
+
+          <div class="max-h-[430px] overflow-y-auto p-3">
+            @for (member of house.members; track member.userId) {
+              <div class="flex items-center gap-3 rounded-2xl px-2 py-3 hover:bg-slate-800/60">
+                <div class="grid size-10 shrink-0 place-items-center rounded-full bg-slate-800 text-xs font-bold">
+                  {{ initialsFor(member.displayName) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <strong class="truncate text-sm">{{ member.displayName }}</strong>
+                  <span
+                    class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize"
+                    [class.bg-violet-950]="member.role === 'owner'"
+                    [class.text-violet-200]="member.role === 'owner'"
+                    [class.bg-sky-950]="member.role === 'admin'"
+                    [class.text-sky-200]="member.role === 'admin'"
+                    [class.bg-slate-800]="member.role === 'member'"
+                    [class.text-slate-400]="member.role === 'member'"
+                  >
+                    {{ member.role }}
+                  </span>
+                </div>
+
+                @if (facade.canManageMembers() && member.role !== 'owner') {
+                  <details class="relative shrink-0" liveDiscussionsDismissibleDetails>
+                    <summary class="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-lg text-slate-400 hover:bg-slate-700 hover:text-white">⋯</summary>
+                    <div class="absolute right-0 top-9 z-30 w-48 rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl">
+                      @if (member.role === 'member') {
+                        <button
+                          class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800 disabled:opacity-40"
+                          type="button"
+                          (click)="facade.promoteToAdmin(member.userId)"
+                          [disabled]="facade.updatingMemberId() === member.userId"
+                        >
+                          Promote to admin
+                        </button>
+                      } @else if (member.role === 'admin') {
+                        <button
+                          class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-800 disabled:opacity-40"
+                          type="button"
+                          (click)="facade.demoteToMember(member.userId)"
+                          [disabled]="facade.updatingMemberId() === member.userId"
+                        >
+                          Remove admin role
+                        </button>
+                      }
+                    </div>
+                  </details>
+                }
+              </div>
+            } @empty {
+              <p class="p-4 text-sm text-slate-500">No House members yet.</p>
+            }
+          </div>
+        </section>
+      </aside>
+    </section>
+  } @else {
+    <div class="rounded-3xl border border-red-900 bg-red-950/20 p-8 text-red-200">
+      {{ facade.error() || 'House not found.' }}
+    </div>
+  }
+</main>

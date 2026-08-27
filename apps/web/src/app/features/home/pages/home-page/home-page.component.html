@@ -1,0 +1,267 @@
+<main class="mx-auto max-w-7xl px-6 py-10">
+  <header class="mb-10 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+    <div>
+      <p class="text-xs font-bold tracking-[0.2em] text-slate-400">LIVE DISCUSSIONS</p>
+      <h1 class="mt-2 max-w-3xl text-4xl font-bold leading-tight tracking-tight md:text-6xl">
+        Find a conversation. Or start your own place.
+      </h1>
+      <p class="mt-4 max-w-2xl text-slate-300">
+        Join a live room instantly, or create a House people can become part of and return to.
+      </p>
+    </div>
+
+    <form class="grid gap-2" [formGroup]="identityForm" (ngSubmit)="saveDisplayName()">
+      <label class="text-sm text-slate-300" for="display-name">Your display name</label>
+      <div class="flex gap-2">
+        <input
+          id="display-name"
+          class="min-w-56 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+          formControlName="displayName"
+          placeholder="Your name"
+        />
+        <button class="rounded-xl border border-slate-600 px-4 font-semibold" type="submit">Save</button>
+      </div>
+    </form>
+  </header>
+
+  @if (facade.error()) {
+    <div class="mb-6 rounded-2xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+      {{ facade.error() }}
+    </div>
+  }
+
+  <section class="mb-12">
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold tracking-[0.2em] text-emerald-300">LIVE NOW</p>
+        <h2 class="mt-1 text-2xl font-semibold">Rooms you can join</h2>
+      </div>
+      <span class="text-sm text-slate-400">{{ filteredRooms().length }} of {{ facade.rooms().length }} shown</span>
+    </div>
+
+    <div class="mb-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <label class="relative block">
+        <span class="sr-only">Search rooms</span>
+        <input
+          #roomSearchInput
+          class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-emerald-500"
+          type="search"
+          placeholder="Search room, topic, or House…"
+          [value]="roomSearch()"
+          (input)="setRoomSearch(roomSearchInput.value)"
+        />
+        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
+      </label>
+
+      <div class="flex flex-wrap gap-2" aria-label="Room access filter">
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-emerald-500]="roomAccessFilter() === 'all'"
+          [class.bg-emerald-950]="roomAccessFilter() === 'all'"
+          [class.border-slate-700]="roomAccessFilter() !== 'all'"
+          (click)="setRoomAccessFilter('all')"
+        >All</button>
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-emerald-500]="roomAccessFilter() === 'open'"
+          [class.bg-emerald-950]="roomAccessFilter() === 'open'"
+          [class.border-slate-700]="roomAccessFilter() !== 'open'"
+          (click)="setRoomAccessFilter('open')"
+        >Open</button>
+        <button
+          class="rounded-xl border px-3 py-2 text-xs font-semibold"
+          type="button"
+          [class.border-amber-500]="roomAccessFilter() === 'locked'"
+          [class.bg-amber-950]="roomAccessFilter() === 'locked'"
+          [class.border-slate-700]="roomAccessFilter() !== 'locked'"
+          (click)="setRoomAccessFilter('locked')"
+        >Locked</button>
+      </div>
+    </div>
+
+    @if (facade.loading()) {
+      <div class="rounded-3xl border border-slate-700 bg-slate-900/70 p-8 text-slate-400">Loading rooms…</div>
+    } @else if (filteredRooms().length) {
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        @for (room of filteredRooms(); track room.id) {
+          <article class="flex min-h-52 flex-col justify-between rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+            <div>
+              <div class="mb-4 flex items-center justify-between gap-3">
+                <div class="flex flex-wrap gap-2">
+                  <span class="rounded-full bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-200">LIVE</span>
+                  @if (room.isLocked) {
+                    <span class="rounded-full bg-amber-950 px-3 py-1 text-xs font-bold text-amber-200">🔒 LOCKED</span>
+                  }
+                </div>
+                <span class="text-sm text-slate-400">{{ room.memberCount }} members</span>
+              </div>
+              <h3 class="text-2xl font-semibold">{{ room.title }}</h3>
+              @if (room.description) {
+                <p class="mt-2 line-clamp-3 text-sm leading-6 text-slate-300">{{ room.description }}</p>
+              }
+              @if (facade.houseForRoom(room.id); as house) {
+                <button
+                  class="mt-2 text-left text-sm font-medium text-violet-300 hover:text-violet-200"
+                  type="button"
+                  (click)="facade.openHouse(house.id)"
+                >
+                  In {{ house.name }} →
+                </button>
+              } @else {
+                <p class="mt-2 text-sm text-slate-500">Independent room</p>
+              }
+              <p class="mt-3 text-sm text-slate-400">
+                {{ room.isLocked ? 'Locked to new participants. Existing room members can reconnect.' : 'Join as a listener. Raise your hand when you want to speak.' }}
+              </p>
+            </div>
+
+            <button
+              class="mt-6 rounded-xl bg-slate-50 px-4 py-3 font-semibold text-slate-950"
+              type="button"
+              (click)="joinRoom(room.id)"
+            >
+              {{ room.isLocked ? 'Open room' : 'Join room' }}
+            </button>
+          </article>
+        }
+      </div>
+    } @else if (facade.rooms().length) {
+      <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+        <h3 class="text-xl font-semibold">No matching rooms</h3>
+        <p class="mt-2 text-slate-400">Try another search or access filter.</p>
+      </div>
+    } @else {
+      <div class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center">
+        <h3 class="text-xl font-semibold">No rooms yet</h3>
+        <p class="mt-2 text-slate-400">Start the first conversation below.</p>
+      </div>
+    }
+  </section>
+
+  <section class="grid gap-5 lg:grid-cols-2">
+    <form class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6" [formGroup]="roomForm" (ngSubmit)="createRoom()">
+      <p class="text-xs font-bold tracking-[0.2em] text-sky-300">START A CONVERSATION</p>
+      <h2 class="mt-2 text-2xl font-semibold">Create a room</h2>
+      <p class="mt-2 text-sm text-slate-400">Set the topic and access mode before you go live. You become the room owner.</p>
+
+      <div class="mt-6 grid gap-4">
+        <label class="grid gap-2 text-sm text-slate-300">
+          Room title
+          <input
+            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+            formControlName="title"
+            maxlength="100"
+            placeholder="Angular architecture, football, music…"
+          />
+        </label>
+
+        <label class="grid gap-2 text-sm text-slate-300">
+          Topic / description
+          <textarea
+            class="min-h-24 resize-y rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-sky-400"
+            formControlName="description"
+            maxlength="500"
+            placeholder="What is this discussion about?"
+          ></textarea>
+          <span class="text-xs text-slate-500">{{ roomForm.controls.description.value.length }}/500</span>
+        </label>
+
+        <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+          <input class="mt-1 size-4" type="checkbox" formControlName="isLocked" />
+          <span>
+            <span class="block text-sm font-semibold text-slate-200">Start locked</span>
+            <span class="mt-1 block text-xs leading-5 text-slate-500">Only existing room members can reconnect until you unlock it from Room Settings.</span>
+          </span>
+        </label>
+      </div>
+
+      <button
+        class="mt-5 w-full rounded-xl bg-sky-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+        type="submit"
+        [disabled]="roomForm.invalid || facade.creatingRoom()"
+      >
+        {{ facade.creatingRoom() ? 'Creating…' : 'Create room' }}
+      </button>
+    </form>
+
+    <form class="rounded-3xl border border-violet-800/70 bg-violet-950/20 p-6" [formGroup]="houseForm" (ngSubmit)="createHouse()">
+      <p class="text-xs font-bold tracking-[0.2em] text-violet-300">BUILD A COMMUNITY</p>
+      <h2 class="mt-2 text-2xl font-semibold">Create your House</h2>
+      <p class="mt-2 text-sm text-slate-400">A House is a community people can join and return to across multiple discussions.</p>
+
+      <div class="mt-6 grid gap-4">
+        <label class="grid gap-2 text-sm text-slate-300">
+          House name
+          <input
+            class="rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="name"
+            placeholder="Frontend Architects"
+          />
+        </label>
+
+        <label class="grid gap-2 text-sm text-slate-300">
+          Description
+          <textarea
+            class="min-h-24 rounded-xl border border-slate-600 bg-slate-950 px-3 py-3 text-slate-50 outline-none focus:border-slate-400"
+            formControlName="description"
+            placeholder="What is this House about?"
+          ></textarea>
+        </label>
+      </div>
+
+      <button
+        class="mt-5 w-full rounded-xl bg-violet-200 px-4 py-3 font-semibold text-slate-950 disabled:opacity-40"
+        type="submit"
+        [disabled]="facade.creatingHouse()"
+      >
+        {{ facade.creatingHouse() ? 'Creating…' : 'Create House' }}
+      </button>
+    </form>
+  </section>
+
+  @if (facade.houses().length) {
+    <section class="mt-12">
+      <div class="mb-5">
+        <p class="text-xs font-bold tracking-[0.2em] text-violet-300">COMMUNITIES</p>
+        <h2 class="mt-1 text-2xl font-semibold">Houses to join</h2>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        @for (house of facade.houses(); track house.id) {
+          <article class="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-xl font-semibold">{{ house.name }}</h3>
+                <p class="mt-2 text-sm text-slate-400">{{ house.description || 'A new community on Live Discussions.' }}</p>
+              </div>
+              <div class="text-right text-xs text-slate-400">
+                <div>{{ house.memberCount }} members</div>
+                <div class="mt-1">{{ house.roomCount }} rooms</div>
+              </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-2">
+              <button
+                class="rounded-xl border border-slate-600 px-4 py-3 font-semibold text-slate-200"
+                type="button"
+                (click)="facade.openHouse(house.id)"
+              >
+                View House
+              </button>
+              <button
+                class="rounded-xl border border-violet-500/60 px-4 py-3 font-semibold text-violet-100 disabled:opacity-40"
+                type="button"
+                (click)="joinHouse(house.id)"
+                [disabled]="facade.joiningHouseId() === house.id"
+              >
+                {{ facade.joiningHouseId() === house.id ? 'Joining…' : 'Join House' }}
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+    </section>
+  }
+</main>
