@@ -98,6 +98,16 @@ export class RoomApiService {
     );
   }
 
+  leaveRoom(roomId: string): Promise<void> {
+    return apiRequestToPromise(
+      this.http.post<void>(
+        `${this.apiBaseUrl}/rooms/${encodeURIComponent(roomId)}/leave`,
+        {},
+      ),
+      'Unable to finalize room leave.',
+    );
+  }
+
   listComments(roomId: string): Promise<RoomCommentHistoryItem[]> {
     return apiRequestToPromise(
       this.http.get<RoomCommentHistoryItem[]>(
