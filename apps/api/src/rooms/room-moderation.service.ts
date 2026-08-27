@@ -3,7 +3,6 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
@@ -12,46 +11,19 @@ import type {
   ParticipantRole,
 } from '@live-discussions/contracts';
 import { RoomServiceClient, trackSourceToString } from 'livekit-server-sdk';
-import { DatabaseService } from '../database/database.service';
 import { RoomMembershipService } from './room-membership.service';
 import { liveKitPublishingPermission } from './room-permissions';
 
-interface PersistedMuteRow {
-  room_id: string;
-  user_id: string;
-  muted_until: Date | string;
-}
-
 @Injectable()
-export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
+export class RoomModerationService implements OnModuleDestroy {
   private readonly logger = new Logger(RoomModerationService.name);
   private readonly muteTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly memoryMutedUntil = new Map<string, number>();
+  private readonly mutedUntilByParticipant = new Map<string, number>();
 
   constructor(
     private readonly memberships: RoomMembershipService,
-    private readonly database: DatabaseService,
     private readonly config: ConfigService,
   ) {}
-
-  async onModuleInit(): Promise<void> {
-    if (!this.database.configured) return;
-
-    const result = await this.database.query<PersistedMuteRow>(
-      `SELECT room_id, user_id, muted_until
-       FROM room_member
-       WHERE muted_until IS NOT NULL`,
-    );
-
-    for (const row of result.rows) {
-      const mutedUntil = new Date(row.muted_until).getTime();
-      if (!Number.isFinite(mutedUntil) || mutedUntil <= Date.now()) {
-        await this.setPersistedMuteUntil(row.room_id, row.user_id, null);
-        continue;
-      }
-      this.scheduleMuteExpiry(row.room_id, row.user_id, mutedUntil);
-    }
-  }
 
   onModuleDestroy(): void {
     for (const timer of this.muteTimers.values()) clearTimeout(timer);
@@ -60,11 +32,11 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
 
   async getActiveMuteUntil(identifier: string, userId: string): Promise<number | null> {
     const roomId = await this.memberships.resolveRoomId(identifier);
-    const mutedUntil = await this.readMuteUntil(roomId, userId);
+    const mutedUntil = this.readMuteUntil(roomId, userId);
     if (!mutedUntil) return null;
 
     if (mutedUntil <= Date.now()) {
-      await this.setPersistedMuteUntil(roomId, userId, null);
+      this.setMuteUntil(roomId, userId, null);
       this.cancelMuteTimer(roomId, userId);
       return null;
     }
@@ -93,7 +65,7 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
     if (request.durationSeconds === null) return;
 
     const mutedUntil = Date.now() + request.durationSeconds * 1000;
-    await this.setPersistedMuteUntil(roomId, request.participantId, mutedUntil);
+    this.setMuteUntil(roomId, request.participantId, mutedUntil);
 
     try {
       await roomService.updateParticipant(roomId, request.participantId, {
@@ -101,7 +73,7 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
         permission: liveKitPublishingPermission(target.role, target.onStage, false),
       });
     } catch (error) {
-      await this.setPersistedMuteUntil(roomId, request.participantId, null);
+      this.setMuteUntil(roomId, request.participantId, null);
       this.cancelMuteTimer(roomId, request.participantId);
       throw error;
     }
@@ -116,10 +88,10 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const roomId = await this.memberships.resolveRoomId(identifier);
     const { target } = await this.resolveMuteTarget(roomId, participantId, actor);
-    const mutedUntil = await this.readMuteUntil(roomId, participantId);
+    const mutedUntil = this.readMuteUntil(roomId, participantId);
     if (!mutedUntil) return;
 
-    await this.setPersistedMuteUntil(roomId, participantId, null);
+    this.setMuteUntil(roomId, participantId, null);
     this.cancelMuteTimer(roomId, participantId);
 
     const roomService = this.roomServiceClient();
@@ -139,6 +111,18 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
         `Unable to release timed microphone mute for ${participantId} in ${roomId}; disconnecting participant: ${this.errorMessage(error)}`,
       );
       await roomService.removeParticipant(roomId, participantId);
+    }
+  }
+
+  clearRoom(roomId: string): void {
+    const prefix = `${roomId}:`;
+    for (const key of [...this.mutedUntilByParticipant.keys()]) {
+      if (key.startsWith(prefix)) this.mutedUntilByParticipant.delete(key);
+    }
+    for (const [key, timer] of [...this.muteTimers.entries()]) {
+      if (!key.startsWith(prefix)) continue;
+      clearTimeout(timer);
+      this.muteTimers.delete(key);
     }
   }
 
@@ -201,7 +185,7 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
     expectedMutedUntil: number,
   ): Promise<void> {
     try {
-      const currentMutedUntil = await this.readMuteUntil(roomId, userId);
+      const currentMutedUntil = this.readMuteUntil(roomId, userId);
       if (!currentMutedUntil) return;
       if (currentMutedUntil > expectedMutedUntil) {
         this.scheduleMuteExpiry(roomId, userId, currentMutedUntil);
@@ -212,7 +196,7 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      await this.setPersistedMuteUntil(roomId, userId, null);
+      this.setMuteUntil(roomId, userId, null);
       const membership = await this.memberships.getMembership(roomId, userId);
       if (!membership) return;
 
@@ -240,39 +224,14 @@ export class RoomModerationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async readMuteUntil(roomId: string, userId: string): Promise<number | null> {
-    if (!this.database.configured) {
-      return this.memoryMutedUntil.get(this.muteKey(roomId, userId)) ?? null;
-    }
-
-    const result = await this.database.query<{ muted_until: Date | string | null }>(
-      'SELECT muted_until FROM room_member WHERE room_id = $1 AND user_id = $2',
-      [roomId, userId],
-    );
-    const value = result.rows[0]?.muted_until;
-    if (!value) return null;
-    const timestamp = new Date(value).getTime();
-    return Number.isFinite(timestamp) ? timestamp : null;
+  private readMuteUntil(roomId: string, userId: string): number | null {
+    return this.mutedUntilByParticipant.get(this.muteKey(roomId, userId)) ?? null;
   }
 
-  private async setPersistedMuteUntil(
-    roomId: string,
-    userId: string,
-    mutedUntil: number | null,
-  ): Promise<void> {
-    if (!this.database.configured) {
-      const key = this.muteKey(roomId, userId);
-      if (mutedUntil === null) this.memoryMutedUntil.delete(key);
-      else this.memoryMutedUntil.set(key, mutedUntil);
-      return;
-    }
-
-    await this.database.query(
-      `UPDATE room_member
-       SET muted_until = $3
-       WHERE room_id = $1 AND user_id = $2`,
-      [roomId, userId, mutedUntil === null ? null : new Date(mutedUntil)],
-    );
+  private setMuteUntil(roomId: string, userId: string, mutedUntil: number | null): void {
+    const key = this.muteKey(roomId, userId);
+    if (mutedUntil === null) this.mutedUntilByParticipant.delete(key);
+    else this.mutedUntilByParticipant.set(key, mutedUntil);
   }
 
   private muteKey(roomId: string, userId: string): string {
